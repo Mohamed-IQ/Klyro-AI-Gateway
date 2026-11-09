@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Klyro | AI Smart Routing Gateway</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { max-width: 100%; overflow-x: hidden; margin: 0; padding: 0; }
+        body[dir="rtl"] { font-family: 'Cairo', sans-serif; }
+        body[dir="ltr"] { font-family: 'Inter', sans-serif; }
+        .font-mono-code { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 9999px; }
+        .chat-bubble-user { border-bottom-right-radius: 0.25rem; }
+        .chat-bubble-ai { border-bottom-left-radius: 0.25rem; }
+    </style>
+</head>
+<body dir="rtl" class="bg-slate-950 text-slate-100 min-h-screen w-full overflow-x-hidden flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-30 w-full bg-slate-900/95 backdrop-blur border-b border-slate-800 px-3 sm:px-4 py-2.5">
+        <div class="max-w-6xl mx-auto w-full flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+                <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-400 flex items-center justify-center text-slate-950 font-black text-base sm:text-lg shadow-md shrink-0">K</div>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-base sm:text-lg font-extrabold tracking-tight text-white truncate" dir="ltr">Klyro<span class="text-emerald-400">.</span></span>
+                        <span class="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0" dir="ltr">AI GATEWAY</span>
+                    </div>
+                    <p id="lblHeaderSub" class="text-[11px] text-slate-400 hidden md:block truncate">بوابة التوجيه الذكي لتقليص فواتير الذكاء الاصطناعي</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <button type="button" id="btnReset" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 border border-slate-800 transition cursor-pointer shrink-0">
+                    تصفير
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-4 space-y-4 overflow-x-hidden">
+
+        <!-- KPIs -->
+        <section class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5 w-full">
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl px-4 py-3 sm:p-4 border-s-4 border-s-cyan-400 flex sm:block items-center justify-between gap-2 min-w-0 shadow-lg">
+                <p class="text-xs text-slate-400 font-semibold truncate">إجمالي الطلبات</p>
+                <h2 id="valTotalRequests" class="text-lg sm:text-2xl font-extrabold text-white sm:mt-1 font-mono-code shrink-0" dir="ltr">0</h2>
+            </div>
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl px-4 py-3 sm:p-4 border-s-4 border-s-emerald-400 flex sm:block items-center justify-between gap-2 min-w-0 shadow-lg">
+                <p class="text-xs text-slate-400 font-semibold truncate">نسبة التوجيه الاقتصادي</p>
+                <h2 id="valCheapPercent" class="text-lg sm:text-2xl font-extrabold text-emerald-400 sm:mt-1 font-mono-code shrink-0" dir="ltr">0%</h2>
+            </div>
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl px-4 py-3 sm:p-4 border-s-4 border-s-amber-400 flex sm:block items-center justify-between gap-2 min-w-0 shadow-lg">
+                <p class="text-xs text-slate-400 font-semibold truncate">صافي الأموال الموفرة</p>
+                <h2 id="valNetSaved" class="text-lg sm:text-2xl font-extrabold text-amber-400 sm:mt-1 font-mono-code shrink-0" dir="ltr">$0.000000</h2>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 w-full">
+
+            <!-- Sidebar -->
+            <aside class="lg:col-span-5 space-y-4 w-full min-w-0">
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-5 space-y-4 w-full min-w-0 shadow-lg">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                        <h3 class="text-xs sm:text-sm font-bold text-white">🔐 خزنة مفاتيح الشركة (BYOK)</h3>
+                        <span id="badgeKeyStatus" class="hidden text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">✓ متصل</span>
+                    </div>
+
+                    <div class="space-y-2 w-full">
+                        <label class="block text-xs font-semibold text-slate-300">مفتاح API الخاص بك (Groq / OpenAI)</label>
+                        <div class="flex flex-col sm:flex-row gap-2 w-full">
+                            <input type="password" id="inputApiKey" placeholder="gsk_... / sk-..." dir="ltr" autocomplete="off"
+                                class="w-full sm:flex-1 min-w-0 bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-2.5 text-xs font-mono-code text-white placeholder-slate-600 focus:outline-none transition-colors">
+                            <button type="button" id="btnSaveKey" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold transition cursor-pointer text-center whitespace-nowrap shadow-md shadow-emerald-900/20">
+                                حفظ المفتاح
+                            </button>
+                        </div>
+                        <p id="lblKeyConfirmMsg" class="hidden text-xs font-semibold text-emerald-400 break-words mt-1">
+                            ✓ تم حفظ المفتاح في المتصفح. النظام جاهز.
+                        </p>
+                    </div>
+
+                    <div class="rounded-xl bg-emerald-950/30 border border-emerald-500/30 p-3 w-full">
+                        <p class="text-[11px] sm:text-xs text-emerald-200 leading-relaxed font-medium break-words">
+                            🛡️ بياناتكم آمنة. الاتصال يتم مباشرة بين متصفحكم وبين خوادم الذكاء الاصطناعي عبر السيرفر الوسيط، ولا يتم تخزين المفتاح في قواعد بياناتنا.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-5 space-y-3 w-full min-w-0 shadow-lg">
+                    <h3 class="text-xs sm:text-sm font-bold text-white border-b border-slate-800 pb-2.5">⚙️ حالة النظام</h3>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-300">المحرك الحقيقي (Backend)</span>
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-md font-bold border border-emerald-500/30">مباشر (Live)</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-300">التوجيه الذكي (AI Router)</span>
+                        <span class="text-[10px] bg-cyan-500/20 text-cyan-400 px-2 py-1 rounded-md font-bold border border-cyan-500/30">نشط</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Chat Area -->
+            <section class="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-col w-full min-w-0 overflow-hidden shadow-lg h-[600px] max-h-[80vh]">
+                <div class="px-3.5 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2 w-full shrink-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                        <h3 class="text-xs sm:text-sm font-bold text-white truncate">مختبر الاختبار الحي</h3>
+                    </div>
+                    <span class="text-[10px] sm:text-[11px] font-mono-code text-cyan-400 shrink-0" dir="ltr">Klyro AI Connected</span>
+                </div>
+
+                <!-- Chat History Container -->
+                <div id="chatContainer" class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 w-full">
+                    <!-- Welcome Message -->
+                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 space-y-2 w-full max-w-[90%]">
+                        <p class="text-xs text-slate-300 leading-relaxed">🚀 أهلاً بك في Klyro AI Gateway. النظام متصل الآن بالخادم الحقيقي (Python Backend). اكتب سؤالك بالأسفل لاختبار التوجيه الفعلي وتكلفة الوفر الحقيقية.</p>
+                    </div>
+                </div>
+
+                <!-- Input Area -->
+                <div class="p-2.5 sm:p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2 w-full shrink-0">
+                    <input type="text" id="inputPrompt" placeholder="اكتب سؤالك هنا لاختبار التوجيه..." autocomplete="off"
+                        class="flex-1 min-w-0 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none transition-colors">
+                    <button type="button" id="btnSend"
+                        class="px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-extrabold text-xs sm:text-sm transition shrink-0 cursor-pointer whitespace-nowrap shadow-md shadow-emerald-900/20">
+                        إرسال
+                    </button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        (function () {
+            // =========================================================================
+            // ⚠️ تغيير هذا الرابط مهم جداً ⚠️
+            // ضع هنا رابط تطبيق Render الخاص بك بعد رفعه (ينتهي بـ /route)
+            // مثال: https://klyro-backend.onrender.com/route
+            const BACKEND_URL = "https://YOUR_RENDER_APP_URL.onrender.com/route"; 
+            // =========================================================================
+
+            // Safe storage wrapper
+            let memoryStorage = {};
+            function getStore(k) { try { return window.localStorage.getItem(k) || memoryStorage[k] || ''; } catch (e) { return memoryStorage[k] || ''; } }
+            function setStore(k, v) { memoryStorage[k] = v; try { window.localStorage.setItem(k, v); } catch (e) {} }
+
+            // Stats state
+            let stats = {
+                totalRequests: parseInt(getStore('klyro_total') || '0'),
+                cheapCount: parseInt(getStore('klyro_cheap') || '0'),
+                netSaved: parseFloat(getStore('klyro_saved') || '0.0')
+            };
+
+            // DOM Elements
+            const inputApiKey = document.getElementById('inputApiKey');
+            const btnSaveKey = document.getElementById('btnSaveKey');
+            const lblKeyConfirmMsg = document.getElementById('lblKeyConfirmMsg');
+            const badgeKeyStatus = document.getElementById('badgeKeyStatus');
+            const valTotalRequests = document.getElementById('valTotalRequests');
+            const valCheapPercent = document.getElementById('valCheapPercent');
+            const valNetSaved = document.getElementById('valNetSaved');
+            const chatContainer = document.getElementById('chatContainer');
+            const inputPrompt = document.getElementById('inputPrompt');
+            const btnSend = document.getElementById('btnSend');
+            const btnReset = document.getElementById('btnReset');
+
+            // Load saved key
+            const savedKey = getStore('klyro_api_key');
+            if (savedKey) {
+                inputApiKey.value = savedKey;
+                badgeKeyStatus.classList.remove('hidden');
+            }
+
+            // Update KPIs
+            function updateKPIs() {
+                valTotalRequests.textContent = stats.totalRequests;
+                const pct = stats.totalRequests === 0 ? 0 : Math.round((stats.cheapCount / stats.totalRequests) * 100);
+                valCheapPercent.textContent = pct + '%';
+                valNetSaved.textContent = '$' + stats.netSaved.toFixed(6);
+                
+                setStore('klyro_total', stats.totalRequests);
+                setStore('klyro_cheap', stats.cheapCount);
+                setStore('klyro_saved', stats.netSaved);
+            }
+            updateKPIs();
+
+            // Reset Stats
+            btnReset.addEventListener('click', () => {
+                if(confirm('هل أنت متأكد من تصفير الإحصائيات؟')) {
+                    stats = { totalRequests: 0, cheapCount: 0, netSaved: 0.000000 };
+                    updateKPIs();
+                    chatContainer.innerHTML = `
+                        <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 space-y-2 w-full max-w-[90%]">
+                            <p class="text-xs text-slate-300 leading-relaxed">🚀 تم تصفير الجلسة. اكتب سؤالك للبدء من جديد.</p>
+                        </div>`;
+                }
+            });
+
+            // Save Key
+            btnSaveKey.addEventListener('click', () => {
+                const key = inputApiKey.value.trim();
+                if(!key) {
+                    alert('الرجاء إدخال مفتاح API أولاً.');
+                    return;
+                }
+                setStore('klyro_api_key', key);
+                badgeKeyStatus.classList.remove('hidden');
+                lblKeyConfirmMsg.classList.remove('hidden');
+                setTimeout(() => lblKeyConfirmMsg.classList.add('hidden'), 3000);
+            });
+
+            // Escape HTML to prevent XSS
+            function escapeHtml(unsafe) {
+                return unsafe
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            // Main Send Function
+            async function handleSend() {
+                const prompt = inputPrompt.value.trim();
+                if (!prompt) return;
+
+                const apiKey = inputApiKey.value.trim();
+                if (!apiKey) {
+                    alert('⚠️ الرجاء إدخال وحفظ مفتاح API الخاص بك في الخزنة أولاً.');
+                    return;
+                }
+
+                inputPrompt.value = '';
+                inputPrompt.disabled = true; // Disable input while loading
+
+                // 1. Append User Message
+                const userDiv = document.createElement('div');
+                userDiv.className = 'flex flex-col items-end space-y-1 w-full';
+                userDiv.innerHTML = `
+                    <span class="text-[10px] text-slate-400 font-bold px-1">👤 أنت</span>
+                    <div class="max-w-[85%] bg-slate-800 border border-slate-700 text-slate-100 rounded-2xl chat-bubble-user px-3.5 py-2.5 text-xs sm:text-sm leading-relaxed break-words shadow-sm" dir="auto">${escapeHtml(prompt)}</div>
+                `;
+                chatContainer.appendChild(userDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                // 2. Append Loading Indicator
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'flex flex-col items-start space-y-1 w-full';
+                loadingDiv.id = 'loadingIndicator';
+                loadingDiv.innerHTML = `
+                    <span class="text-[10px] text-emerald-400 font-bold px-1">Klyro Gateway</span>
+                    <div class="max-w-[85%] bg-slate-950 border border-slate-800 text-slate-400 rounded-2xl chat-bubble-ai px-3.5 py-2.5 text-xs sm:text-sm flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        جاري التوجيه وحساب التكلفة الحقيقية...
+                    </div>
+                `;
+                chatContainer.appendChild(loadingDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                try {
+                    // 3. Fetch from Real Backend
+                    const response = await fetch(BACKEND_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            prompt: prompt, 
+                            api_key: apiKey 
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    // Remove loading
+                    loadingDiv.remove();
+                    inputPrompt.disabled = false;
+                    inputPrompt.focus();
+
+                    if (!response.ok || data.error) {
+                        throw new Error(data.error || 'حدث خطأ في الخادم');
+                    }
+
+                    // 4. Render AI Response
+                    const aiDiv = document.createElement('div');
+                    aiDiv.className = 'flex flex-col items-start space-y-1 w-full';
+                    
+                    const isHard = data.route === 'HARD';
+                    const badgeColor = isHard ? 'rose' : 'emerald';
+                    const badgeText = isHard ? '🔴 [HARD - نموذج عملاق]' : '🟢 [EASY - نموذج اقتصادي]';
+                    
+                    const oldC = data.old_cost.toFixed(6);
+                    const newC = data.new_cost.toFixed(6);
+                    const savedC = data.saved.toFixed(6);
+                    const savingPercent = data.old_cost > 0 ? Math.round((data.saved / data.old_cost) * 100) : 0;
+
+                    aiDiv.innerHTML = `
+                        <span class="text-[10px] text-emerald-400 font-bold px-1 flex items-center gap-2">
+                            Klyro Router 
+                            <span class="text-[9px] bg-${badgeColor}-500/20 text-${badgeColor}-400 px-1.5 py-0.5 rounded border border-${badgeColor}-500/30">${badgeText}</span>
+                        </span>
+                        <div class="max-w-[90%] bg-slate-950 border border-slate-800 text-slate-300 rounded-2xl chat-bubble-ai px-3.5 py-3 text-xs sm:text-sm space-y-3 shadow-sm">
+                            
+                            <div dir="auto" class="whitespace-pre-wrap leading-relaxed">${escapeHtml(data.answer)}</div>
+                            
+                            <div class="border-t border-slate-800/80 pt-2 flex flex-col gap-1.5 bg-slate-900/50 p-2 rounded-lg">
+                                <div class="flex justify-between items-center text-[11px]">
+                                    <span class="text-slate-400">الموديل:</span>
+                                    <span class="text-cyan-400 font-mono-code text-[10px]" dir="ltr">${data.model_used}</span>
+                                </div>
+                                <div class="flex justify-between items-center text-[11px]">
+                                    <span class="text-rose-400">التكلفة القديمة:</span>
+                                    <span class="text-rose-400 font-mono-code" dir="ltr">$${oldC}</span>
+                                </div>
+                                <div class="flex justify-between items-center text-[11px]">
+                                    <span class="text-emerald-400">عبر Klyro:</span>
+                                    <span class="text-emerald-400 font-mono-code" dir="ltr">$${newC}</span>
+                                </div>
+                                <div class="flex justify-between items-center text-[12px] font-bold bg-amber-500/10 p-1.5 rounded-md mt-1 border border-amber-500/20">
+                                    <span class="text-amber-400">إجمالي الوفر:</span>
+                                    <span class="text-amber-400 font-mono-code" dir="ltr">$${savedC} (${savingPercent}%)</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    chatContainer.appendChild(aiDiv);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                    // 5. Update Stats
+                    stats.totalRequests += 1;
+                    if (!isHard) stats.cheapCount += 1;
+                    stats.netSaved += data.saved;
+                    updateKPIs();
+
+                } catch (error) {
+                    loadingDiv.remove();
+                    inputPrompt.disabled = false;
+                    inputPrompt.focus();
+                    
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'flex flex-col items-start space-y-1 w-full';
+                    errDiv.innerHTML = `
+                        <span class="text-[10px] text-rose-400 font-bold px-1">⚠️ خطأ في الاتصال</span>
+                        <div class="max-w-[85%] bg-rose-950/30 border border-rose-500/30 text-rose-200 rounded-2xl chat-bubble-ai px-3.5 py-2.5 text-xs sm:text-sm break-words" dir="auto">
+                            ${escapeHtml(error.message)}<br>
+                            <span class="text-[10px] opacity-70 mt-1 block">تأكد من تشغيل السيرفر (Render) وأن الرابط صحيح.</span>
+                        </div>
+                    `;
+                    chatContainer.appendChild(errDiv);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+            }
+
+            // Event Listeners
+            btnSend.addEventListener('click', handleSend);
+            inputPrompt.addEventListener('keypress', (e) => { 
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSend(); 
+                } 
+            });
+
+        })();
+    </script>
+</body>
+</html>
