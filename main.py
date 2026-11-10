@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import uvicorn
 from litellm import completion, completion_cost
 
 app = FastAPI()
@@ -23,15 +24,15 @@ class ChatRequest(BaseModel):
 
 @app.post("/route")
 async def route_chat(request: ChatRequest):
-    os.environ["GROQ_API_KEY"] = request.api_key
-    
     try:
-        # 1. الموزع الذكي
+        # 1. الموزع الذكي (نمرر المفتاح هنا مباشرة)
         prompt_router = "أنت موزع. اكتب EASY إذا كان السؤال بسيطاً، و HARD إذا كان معقداً (كود، تحليل، خطة). اكتب كلمة واحدة فقط."
         route_decision = completion(
             model="groq/openai/gpt-oss-20b",
             messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": request.prompt}],
-            temperature=0, reasoning_effort="low"
+            temperature=0, 
+            reasoning_effort="low",
+            api_key=request.api_key # إصلاح: تمرير المفتاح مباشرة
         )
         route_type = route_decision.choices[0].message.content.strip().upper()
     except Exception as e:
@@ -49,7 +50,8 @@ async def route_chat(request: ChatRequest):
         concise_prompt = {"role": "system", "content": "أجب باختصار شديد وبدون مقدمات."}
         response = completion(
             model=model_chosen,
-            messages=[concise_prompt, {"role": "user", "content": request.prompt}]
+            messages=[concise_prompt, {"role": "user", "content": request.prompt}],
+            api_key=request.api_key # إصلاح: تمرير المفتاح مباشرة هنا أيضاً
         )
         answer = response.choices[0].message.content
     except Exception as e:
@@ -72,3 +74,8 @@ async def route_chat(request: ChatRequest):
         "new_cost": real_cost_new,
         "saved": saved
     }
+
+# كود تشغيل السيرفر (مهم جداً لـ Render)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
