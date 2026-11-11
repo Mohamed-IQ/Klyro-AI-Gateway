@@ -3,11 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import uvicorn
-from litellm import completion, completion_cost
+from litellm import completion, get_model_info
 
 app = FastAPI()
 
-# السماح للواجهة بالاتصال بالسيرفر
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,14 +24,13 @@ class ChatRequest(BaseModel):
 @app.post("/route")
 async def route_chat(request: ChatRequest):
     try:
-        # 1. الموزع الذكي (نمرر المفتاح هنا مباشرة)
+        # 1. الموزع الذكي (أزلنا reasoning_effort لحل مشكلة الـ 500)
         prompt_router = "أنت موزع. اكتب EASY إذا كان السؤال بسيطاً، و HARD إذا كان معقداً (كود، تحليل، خطة). اكتب كلمة واحدة فقط."
         route_decision = completion(
             model="groq/openai/gpt-oss-20b",
             messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": request.prompt}],
-            temperature=0, 
-            reasoning_effort="low",
-            api_key=request.api_key # إصلاح: تمرير المفتاح مباشرة
+            temperature=0,
+            api_key=request.api_key
         )
         route_type = route_decision.choices[0].message.content.strip().upper()
     except Exception as e:
@@ -51,20 +49,28 @@ async def route_chat(request: ChatRequest):
         response = completion(
             model=model_chosen,
             messages=[concise_prompt, {"role": "user", "content": request.prompt}],
-            api_key=request.api_key # إصلاح: تمرير المفتاح مباشرة هنا أيضاً
+            api_key=request.api_key
         )
         answer = response.choices[0].message.content
     except Exception as e:
         return {"error": f"فشل توليد الإجابة: {str(e)}"}
 
-    # 3. الحسابات الحقيقية
-    tokens_in = response.usage.prompt_tokens
-    tokens_out = response.usage.completion_tokens
-    real_cost_new = completion_cost(completion_response=response)
-    old_cost = (tokens_in * request.PRICE_OLD_IN) + (tokens_out * request.PRICE_OLD_OUT)
-    
-    saved = old_cost - real_cost_new
-    if saved < 0: saved = 0 
+    # 3. الحسابات الحقيقية (الأسعار الحية من LiteLLM)
+    try:
+        model_info = get_model_info(model=model_chosen)
+        input_cost_per_token = model_info.get("input_cost_per_token", 0.0)
+        output_cost_per_token = model_info.get("output_cost_per_token", 0.0)
+        
+        tokens_in = response.usage.prompt_tokens
+        tokens_out = response.usage.completion_tokens
+        
+        real_cost_new = (tokens_in * input_cost_per_token) + (tokens_out * output_cost_per_token)
+        old_cost = (tokens_in * request.PRICE_OLD_IN) + (tokens_out * request.PRICE_OLD_OUT)
+        
+        saved = old_cost - real_cost_new
+        if saved < 0: saved = 0 
+    except Exception as e:
+        return {"error": f"فشل حساب التكلفة: {str(e)}"}
 
     return {
         "route": route_type,
@@ -75,7 +81,6 @@ async def route_chat(request: ChatRequest):
         "saved": saved
     }
 
-# كود تشغيل السيرفر (مهم جداً لـ Render)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
