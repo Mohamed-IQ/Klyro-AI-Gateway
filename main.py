@@ -8,6 +8,7 @@ from litellm import completion, cost_per_token, completion_cost, get_llm_provide
 
 app = FastAPI()
 
+# إعدادات CORS للسماح للواجهة بالاتصال بالسيرفر
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,6 +21,7 @@ class ChatRequest(BaseModel):
     prompt: str
     api_key: str
 
+# --- 1. خريطة النماذج لكل مزود ---
 PROVIDER_MODEL_MAP = {
     "groq": {
         "router": "groq/llama3-8b-8192",
@@ -39,6 +41,7 @@ PROVIDER_MODEL_MAP = {
 }
 
 def detect_provider_and_models(api_key: str):
+    """اكتشاف المزود والنماذج بناءً على مفتاح API"""
     try:
         _, provider, _, _ = get_llm_provider(model="gpt-3.5-turbo", api_key=api_key)
         provider = provider.lower()
@@ -46,29 +49,39 @@ def detect_provider_and_models(api_key: str):
         if api_key.startswith("gsk_"): provider = "groq"
         elif api_key.startswith("sk-ant-"): provider = "anthropic"
         else: provider = "openai"
-    return provider, PROVIDER_MODEL_MAP.get(provider, PROVIDER_MODEL_MAP["groq"])
+    
+    models = PROVIDER_MODEL_MAP.get(provider, PROVIDER_MODEL_MAP["groq"])
+    return provider, models
 
+# --- 2. الفلتر الاستكشافي الخارق (Super Heuristics) ---
 def smart_heuristic_router(prompt: str) -> str:
+    """يرجع 'HARD' أو 'EASY' أو 'UNKNOWN' بناءً على قواعد صارمة"""
     text = prompt.strip()
     lower_text = text.lower()
     
+    # 1. أسئلة التحيات أو القصيرة جداً -> اقتصادي فوراً
     if len(text) < 20:
         simple_greetings = ["مرحبا", "اهلا", "السلام", "هاي", "hello", "hi", "hey", "شكرا"]
         if any(g in lower_text for g in simple_greetings) or len(text.split()) <= 4:
             return "EASY"
     
+    # 2. كود برمجي صريح أو معادلات رياضية -> قوي فوراً
     if "```" in text or re.search(r"(def |class |import |function |const |let |var |public |private )", text):
         return "HARD"
     if re.search(r"[=+\-*/^%]", text) and len(text) > 20:
         return "HARD"
         
+    # 3. كلمات تدل على التحليل أو التخطيط العميق فقط -> قوي
     hard_keywords = ["كود", "code", "برمجة", "دالة", "function", "خطأ", "error", "تحليل بيانات", "data analysis", "خطة عمل", "business plan"]
     if any(k in lower_text for k in hard_keywords):
         return "HARD"
         
+    # 4. أي شي غير هذا -> يذهب للموزع الذكي ليقرر
     return "UNKNOWN" 
 
+# --- 3. دالة جلب التكلفة الحية ---
 def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """جلب التكلفة الحية من LiteLLM (بدون أي أرقام ثابتة)"""
     try:
         prompt_cost, completion_cost_val = cost_per_token(
             model=model_name,
@@ -79,6 +92,7 @@ def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -
         if total > 0: return total
     except Exception:
         pass
+
     try:
         class MockResponse:
             def __init__(self, model, prompt_tokens, completion_tokens):
@@ -92,12 +106,15 @@ def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -
         if cost > 0: return cost
     except Exception:
         pass
+
     return 0.0
 
 @app.post("/route")
 async def route_chat(request: ChatRequest):
+    # 1. اكتشاف المزود
     provider, models = detect_provider_and_models(request.api_key)
 
+    # 2. تطبيق الفلتر الاستكشافي
     heuristic_decision = smart_heuristic_router(request.prompt)
     
     if heuristic_decision == "EASY":
@@ -107,6 +124,7 @@ async def route_chat(request: ChatRequest):
         model_chosen = models["strong"]
         model_name = f"STRONG (Heuristic) - {provider}"
     else:
+        # 3. الموزع الذكي (للسيناريوهات الغامضة)
         try:
             prompt_router = """
 أنت مدير مالي وتقني (CTO) صارم جداً في تقليل التكاليف.
@@ -126,6 +144,7 @@ async def route_chat(request: ChatRequest):
             )
             route_type = route_decision.choices[0].message.content.strip().upper()
         except Exception:
+            # في حال فشل الموزع، نرسله للاقتصادي كخيار أول (لتوفير المال)
             route_type = "EASY"
 
         if "HARD" in route_type:
@@ -135,6 +154,7 @@ async def route_chat(request: ChatRequest):
             model_chosen = models["economy"]
             model_name = f"ECONOMY (LLM Router) - {provider}"
 
+    # 4. توليد الإجابة
     try:
         response = completion(
             model=model_chosen,
@@ -148,34 +168,39 @@ async def route_chat(request: ChatRequest):
     except Exception as e:
         return {"error": f"فشل توليد الإجابة: {str(e)}", "status": "error"}
 
-    # --- حسابات التكلفة الحية (داخل نفس المزود) ---
+    # 5. حسابات التكلفة الحية (المقارنة داخل نفس المزود)
     
-    # 1. تكلفة النموذج القوي (لو ذهب السؤال له) - من نفس مزود العميل
+    # أ. تكلفة النموذج القوي (لو ذهب السؤال له)
     cost_strong = get_live_cost(models["strong"], tokens_in, tokens_out)
     
-    # 2. تكلفة النموذج الاقتصادي (اللي اشتغل فعلاً) - من نفس مزود العميل
+    # ب. التكلفة الفعلية (النموذج اللي اشتغل فعلاً)
     cost_actual = get_live_cost(model_chosen, tokens_in, tokens_out)
 
-    # 3. حساب الوفر الحقيقي (المقارنة داخل نفس المزود)
-    # إذا اشتغل الاقتصادي، الوفر هو الفرق بين القوي والاقتصادي.
-    # إذا اشتغل القوي، الوفر = 0 (لأنه استخدم أقوى شي متوفر بالمزود).
+    # ج. حساب الوفر الحقيقي (القوي - الاقتصادي)
     routing_saved = max(0, cost_strong - cost_actual) if "ECONOMY" in model_name else 0.0
 
-    # 4. بونص: مقارنة GPT-4o (للتسويق فقط، للعميل اللي يستخدم OpenAI أو غيره)
+    # د. بونص: تكلفة GPT-4o (للتسويق فقط)
     cost_gpt4o = get_live_cost("gpt-4o", tokens_in, tokens_out)
+    
+    # هـ. الوفر الكلي مقارنة بـ GPT-4o
+    total_saved = max(0, cost_gpt4o - cost_actual)
 
+    # 6. إرجاع النتيجة النهائية (متوافقة مع الواجهة الجديدة)
     return {
         "status": "success",
         "provider": provider,
         "route": "HARD" if "STRONG" in model_name else "EASY",
         "model_used": model_name,
+        "strong_model_selected": models["strong"],    # للواجهة
+        "economy_model_selected": models["economy"],  # للواجهة
         "answer": answer,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
-        "cost_strong_provider": cost_strong, # تكلفة النموذج القوي لمزود العميل
-        "new_cost": cost_actual,             # التكلفة الفعلية اللي دفعها العميل
-        "routing_saved": routing_saved,      # الوفر الحقيقي (القوي - الاقتصادي)
-        "cost_gpt4o": cost_gpt4o             # بونص للتسويق
+        "cost_strong_provider": cost_strong,          # تكلفة القوي
+        "new_cost": cost_actual,                      # التكلفة الفعلية
+        "routing_saved": routing_saved,               # وفر التوجيه
+        "cost_gpt4o": cost_gpt4o,                     # تكلفة GPT-4o (للمقارنة)
+        "total_saved": total_saved                    # الوفر الكلي
     }
 
 if __name__ == "__main__":
