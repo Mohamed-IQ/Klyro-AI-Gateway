@@ -3,204 +3,419 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Klyro AI Gateway</title>
+    <title>Klyro AI Gateway | Enterprise Cost Optimization</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Cairo', sans-serif; background-color: #0f172a; color: #e2e8f0; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .chat-box { height: 400px; overflow-y: auto; }
-        .chat-box::-webkit-scrollbar { width: 6px; }
-        .chat-box::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        :root {
+            --bg-color: #0b1120;
+            --card-bg: rgba(30, 41, 59, 0.6);
+            --border-color: rgba(255, 255, 255, 0.08);
+        }
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: var(--bg-color);
+            color: #f8fafc;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(16, 185, 129, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(6, 182, 212, 0.08), transparent 25%);
+            background-attachment: fixed;
+        }
+        html[lang="en"] body { font-family: 'Inter', sans-serif; }
+        
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+        .glass-input {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        .glass-input:focus {
+            border-color: #10b981;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+            outline: none;
+        }
+        .chat-container { height: 480px; overflow-y: auto; scroll-behavior: smooth; }
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-track { background: transparent; }
+        .chat-container::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        
+        .glow-text { text-shadow: 0 0 20px rgba(16, 185, 129, 0.5); }
+        .btn-primary {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+        }
+        .disabled-overlay { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse-dot { animation: pulse-dot 2s infinite; }
     </style>
 </head>
-<body class="min-h-screen p-4 md:p-8">
+<body class="min-h-screen pb-12">
 
-    <!-- Header -->
-    <header class="max-w-6xl mx-auto flex justify-between items-center mb-8">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-bold text-xl">K</div>
-            <h1 class="text-2xl font-bold">Klyro AI Gateway</h1>
+    <!-- Navbar -->
+    <nav class="glass-card sticky top-0 z-50 border-b border-slate-700/50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-extrabold text-2xl shadow-lg shadow-emerald-500/20">
+                        K
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight text-white">Klyro AI <span class="text-emerald-400">Gateway</span></h1>
+                        <p class="text-xs text-slate-400" data-i18n="nav_subtitle">Enterprise Routing & Cost Optimization</p>
+                    </div>
+                </div>
+                
+                <!-- Language Toggle -->
+                <button id="lang-toggle" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 transition text-sm font-medium">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
+                    <span id="lang-text">English</span>
+                </button>
+            </div>
         </div>
-        <button id="lang-toggle" class="glass px-4 py-2 rounded-lg text-sm hover:bg-slate-700 transition">English / عربي</button>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-8 text-center">
+        <h2 class="text-3xl md:text-5xl font-extrabold mb-4 leading-tight" data-i18n="hero_title">
+            قلل فاتورة الذكاء الاصطناعي بنسبة <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">97%</span>
+        </h2>
+        <p class="text-lg text-slate-400 max-w-3xl mx-auto" data-i18n="hero_subtitle">
+            بوابة توجيه ذكية تكتشف مزودك تلقائياً، وتوزع المهام بين النماذج القوية والاقتصادية، لتوفر أموالك دون التضحية بجودة الإجابات.
+        </p>
     </header>
 
-    <!-- API Key Section (BYOK) -->
-    <section class="max-w-6xl mx-auto glass rounded-xl p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-3" data-i18n="byok_title">🔑 مفتاح API الخاص بك (BYOK)</h2>
-        <input type="password" id="api-key" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500" placeholder="gsk_..." data-i18n-placeholder="byok_placeholder">
-        <p class="text-xs text-slate-400 mt-2" data-i18n="byok_hint">يتم اكتشاف المزود (Groq, OpenAI, etc.) تلقائياً.</p>
-    </section>
-
-    <!-- Dashboard Stats -->
-    <section class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <!-- Old Cost -->
-        <div class="glass rounded-xl p-4 text-center">
-            <p class="text-sm text-slate-400 mb-1" data-i18n="stat_old">التكلفة القديمة (GPT-4o)</p>
-            <p class="text-2xl font-bold text-red-400" id="stat-old-cost">$0.000000</p>
-        </div>
-        <!-- New Cost -->
-        <div class="glass rounded-xl p-4 text-center">
-            <p class="text-sm text-slate-400 mb-1" data-i18n="stat_new">تكلفة Klyro</p>
-            <p class="text-2xl font-bold text-emerald-400" id="stat-new-cost">$0.000000</p>
-        </div>
-        <!-- Total Saved -->
-        <div class="glass rounded-xl p-4 text-center">
-            <p class="text-sm text-slate-400 mb-1" data-i18n="stat_saved">إجمالي الوفر</p>
-            <p class="text-2xl font-bold text-yellow-400" id="stat-total-saved">$0.000000</p>
-        </div>
-        <!-- Routing Saved -->
-        <div class="glass rounded-xl p-4 text-center border-emerald-500 border-2">
-            <p class="text-sm text-slate-400 mb-1" data-i18n="stat_routing">وفر التوجيه الذكي</p>
-            <p class="text-2xl font-bold text-emerald-400" id="stat-routing-saved">$0.000000</p>
-        </div>
-    </section>
-
-    <!-- Auto-Detected Models & Routing Badge -->
-    <section class="max-w-6xl mx-auto glass rounded-xl p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-4" data-i18n="models_title">🤖 النماذج المكتشفة تلقائياً</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-slate-800 rounded-lg p-4 border border-slate-600">
-                <p class="text-sm text-slate-400" data-i18n="model_strong">النموذج القوي (للمهام المعقدة)</p>
-                <p class="text-lg font-mono text-cyan-400 mt-1" id="model-strong">-</p>
-            </div>
-            <div class="bg-slate-800 rounded-lg p-4 border border-slate-600">
-                <p class="text-sm text-slate-400" data-i18n="model_economy">النموذج الاقتصادي (للمهام البسيطة)</p>
-                <p class="text-lg font-mono text-emerald-400 mt-1" id="model-economy">-</p>
-            </div>
-        </div>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         
-        <!-- Routing Decision Badge -->
-        <div class="mt-6 flex justify-center">
-            <div id="route-badge" class="hidden px-6 py-2 rounded-full font-bold text-white transition-all">
-                <!-- EASY / HARD -->
+        <!-- Section 1: BYOK & Auto-Detection -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Key Input Card -->
+            <div class="glass-card rounded-2xl p-6 lg:col-span-1">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                    </div>
+                    <h3 class="text-lg font-bold" data-i18n="byok_title">مفتاح API (BYOK)</h3>
+                </div>
+                <p class="text-sm text-slate-400 mb-4" data-i18n="byok_desc">أدخل مفتاحك (Groq, OpenAI, Anthropic). نحن لا نخزنه، بل نستخدمه للاتصال الفوري.</p>
+                
+                <input type="password" id="api-key" class="glass-input w-full rounded-xl px-4 py-3 text-white mb-4" placeholder="sk-... / gsk_..." data-i18n-placeholder="byok_placeholder">
+                
+                <button id="connect-btn" class="btn-primary w-full text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2">
+                    <span id="connect-btn-text" data-i18n="btn_connect">تفعيل البوابة</span>
+                    <svg id="connect-spinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                </button>
+                
+                <div id="connect-status" class="mt-4 text-sm font-medium hidden text-center"></div>
             </div>
-        </div>
-    </section>
 
-    <!-- Chat Interface -->
-    <section class="max-w-6xl mx-auto glass rounded-xl p-6">
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-lg font-semibold" data-i18n="chat_title">💬 مختبر التوجيه الحي</h2>
-            <span class="flex items-center gap-2 text-sm text-emerald-400"><div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div> <span data-i18n="connected">متصل</span></span>
-        </div>
-        
-        <div id="chat-box" class="chat-box mb-4 space-y-4 p-4 bg-slate-900 rounded-lg">
-            <div class="text-slate-400 text-sm text-center" data-i18n="chat_welcome">أهلاً بك في Klyro. اكتب سؤالك بالأسفل لاختبار التوجيه الذكي.</div>
-        </div>
+            <!-- Detected Models Card -->
+            <div id="models-card" class="glass-card rounded-2xl p-6 lg:col-span-2 relative overflow-hidden disabled-overlay">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+                    </div>
+                    <h3 class="text-lg font-bold" data-i18n="models_title">النماذج المكتشفة تلقائياً</h3>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Provider -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 md:col-span-2 flex justify-between items-center">
+                        <span class="text-slate-400 font-medium" data-i18n="provider_label">المزود المكتشف:</span>
+                        <span class="text-cyan-400 font-bold text-lg" id="detected-provider">---</span>
+                    </div>
+                    
+                    <!-- Strong Model -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 border-l-4 border-l-red-500">
+                        <p class="text-xs text-slate-400 mb-1" data-i18n="model_strong">النموذج القوي (للمهام المعقدة)</p>
+                        <p class="text-sm font-mono text-red-400 font-bold break-all" id="model-strong">---</p>
+                    </div>
+                    
+                    <!-- Economy Model -->
+                    <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 border-l-4 border-l-emerald-500">
+                        <p class="text-xs text-slate-400 mb-1" data-i18n="model_economy">النموذج الاقتصادي (للمهام البسيطة)</p>
+                        <p class="text-sm font-mono text-emerald-400 font-bold break-all" id="model-economy">---</p>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-        <div class="flex gap-2">
-            <input type="text" id="user-input" class="flex-1 bg-slate-800 border border-slate-600 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500" placeholder="اكتب سؤالك هنا..." data-i18n-placeholder="chat_placeholder">
-            <button id="send-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-bold transition" data-i18n="btn_send">إرسال</button>
-        </div>
-    </section>
+        <!-- Section 2: Live Savings & Chat -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Savings Dashboard (Left) -->
+            <div class="lg:col-span-4 space-y-6">
+                <!-- Total Savings Card -->
+                <div class="glass-card rounded-2xl p-6 border-t-4 border-t-emerald-500 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl"></div>
+                    <h3 class="text-slate-300 font-semibold mb-1" data-i18n="stat_routing">وفر التوجيه الذكي (Routing Savings)</h3>
+                    <p class="text-4xl font-extrabold text-emerald-400 glow-text mt-2" id="stat-routing-saved">$0.000000</p>
+                    <p class="text-xs text-slate-500 mt-2" data-i18n="stat_routing_desc">الفرق بين تكلفة النموذج القوي والاقتصادي.</p>
+                </div>
+
+                <!-- Cost Comparison -->
+                <div class="glass-card rounded-2xl p-6">
+                    <h3 class="text-slate-300 font-semibold mb-4" data-i18n="cost_comparison">مقارنة التكلفة (لكل طلب)</h3>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-slate-400" data-i18n="stat_old">التكلفة القديمة (GPT-4o)</span>
+                                <span class="text-red-400 font-mono" id="stat-old-cost">$0.000000</span>
+                            </div>
+                            <div class="w-full bg-slate-700 rounded-full h-2"><div class="bg-red-500 h-2 rounded-full" style="width: 100%"></div></div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-slate-400" data-i18n="stat_new">تكلفة Klyro</span>
+                                <span class="text-emerald-400 font-mono" id="stat-new-cost">$0.000000</span>
+                            </div>
+                            <div class="w-full bg-slate-700 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" id="cost-bar" style="width: 0%"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Simulator (Right) -->
+            <div class="lg:col-span-8">
+                <div id="chat-section" class="glass-card rounded-2xl p-6 h-full flex flex-col disabled-overlay">
+                    <div class="flex justify-between items-center mb-4 pb-4 border-b border-slate-700">
+                        <h3 class="text-lg font-bold flex items-center gap-2">
+                            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                            <span data-i18n="chat_title">محاكي التكلفة الحي</span>
+                        </h3>
+                        <span id="connection-indicator" class="flex items-center gap-2 text-sm text-slate-500">
+                            <div class="w-2 h-2 rounded-full bg-slate-500"></div> <span data-i18n="not_connected">غير متصل</span>
+                        </span>
+                    </div>
+                    
+                    <div id="chat-box" class="chat-container flex-1 mb-4 space-y-4 pr-2">
+                        <div class="text-center text-slate-500 mt-10" id="chat-placeholder">
+                            <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                            <p data-i18n="chat_welcome">الرجاء تفعيل البوابة أولاً لبدء المحادثة.</p>
+                        </div>
+                    </div>
+
+                    <!-- Route Badge -->
+                    <div class="flex justify-center mb-4">
+                        <div id="route-badge" class="hidden px-4 py-1.5 rounded-full text-sm font-bold border"></div>
+                    </div>
+
+                    <div class="flex gap-3 relative">
+                        <input type="text" id="user-input" class="glass-input flex-1 rounded-xl px-4 py-3 text-white" placeholder="اكتب سؤالك هنا..." data-i18n-placeholder="chat_placeholder">
+                        <button id="send-btn" class="btn-primary px-6 rounded-xl text-white font-bold flex items-center justify-center">
+                            <svg class="w-5 h-5 transform rtl:-scale-x-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="text-center text-slate-500 text-sm mt-12">
+        <p>&copy; 2024 Klyro AI Gateway. Enterprise Grade Cost Optimization.</p>
+    </footer>
 
     <script>
-        // --- 1. ترجمة الواجهة (i18n) ---
         const translations = {
             ar: {
-                byok_title: "🔑 مفتاح API الخاص بك (BYOK)",
-                byok_placeholder: "gsk_...",
-                byok_hint: "يتم اكتشاف المزود (Groq, OpenAI, etc.) تلقائياً.",
-                stat_old: "التكلفة القديمة (GPT-4o)",
-                stat_new: "تكلفة Klyro",
-                stat_saved: "إجمالي الوفر",
-                stat_routing: "وفر التوجيه الذكي",
-                models_title: "🤖 النماذج المكتشفة تلقائياً",
+                nav_subtitle: "توجيه ذكي وتوفير للتكاليف",
+                hero_title: 'قلل فاتورة الذكاء الاصطناعي بنسبة <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">97%</span>',
+                hero_subtitle: "بوابة توجيه ذكية تكتشف مزودك تلقائياً، وتوزع المهام بين النماذج القوية والاقتصادية، لتوفر أموالك دون التضحية بجودة الإجابات.",
+                byok_title: "مفتاح API (BYOK)",
+                byok_desc: "أدخل مفتاحك (Groq, OpenAI, Anthropic). نحن لا نخزنه، بل نستخدمه للاتصال الفوري.",
+                byok_placeholder: "sk-... / gsk_...",
+                btn_connect: "تفعيل البوابة",
+                connecting: "جاري الفحص...",
+                connect_success: "✅ تم تفعيل البوابة بنجاح!",
+                connect_fail: "❌ فشل التفعيل: ",
+                models_title: "النماذج المكتشفة تلقائياً",
+                provider_label: "المزود المكتشف:",
                 model_strong: "النموذج القوي (للمهام المعقدة)",
                 model_economy: "النموذج الاقتصادي (للمهام البسيطة)",
-                chat_title: "💬 مختبر التوجيه الحي",
+                stat_routing: "وفر التوجيه الذكي",
+                stat_routing_desc: "الفرق بين تكلفة النموذج القوي والاقتصادي.",
+                cost_comparison: "مقارنة التكلفة (لكل طلب)",
+                stat_old: "التكلفة القديمة (GPT-4o)",
+                stat_new: "تكلفة Klyro",
+                chat_title: "محاكي التكلفة الحي",
+                not_connected: "غير متصل",
                 connected: "متصل",
-                chat_welcome: "أهلاً بك في Klyro. اكتب سؤالك بالأسفل لاختبار التوجيه الذكي.",
+                chat_welcome: "الرجاء تفعيل البوابة أولاً لبدء المحادثة.",
                 chat_placeholder: "اكتب سؤالك هنا...",
-                btn_send: "إرسال",
-                route_hard: "🔴 تم التوجيه: النموذج القوي (HARD)",
-                route_easy: "🟢 تم التوجيه: النموذج الاقتصادي (EASY)",
-                thinking: "جاري التحليل والتوجيه..."
+                route_hard: "🔴 تم التوجيه: النموذج القوي",
+                route_easy: "🟢 تم التوجيه: النموذج الاقتصادي",
+                key_required: "الرجاء إدخال المفتاح أولاً."
             },
             en: {
-                byok_title: "🔑 Your API Key (BYOK)",
-                byok_placeholder: "gsk_...",
-                byok_hint: "Provider (Groq, OpenAI, etc.) is auto-detected.",
-                stat_old: "Old Cost (GPT-4o)",
-                stat_new: "Klyro Cost",
-                stat_saved: "Total Saved",
-                stat_routing: "Smart Routing Savings",
-                models_title: "🤖 Auto-Detected Models",
+                nav_subtitle: "Smart Routing & Cost Optimization",
+                hero_title: 'Cut AI Costs by <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">97%</span>',
+                hero_subtitle: "A smart routing gateway that auto-detects your provider, distributes tasks between strong and economy models, saving you money without compromising quality.",
+                byok_title: "API Key (BYOK)",
+                byok_desc: "Enter your key (Groq, OpenAI, Anthropic). We don't store it, we use it for instant connection.",
+                byok_placeholder: "sk-... / gsk_...",
+                btn_connect: "Activate Gateway",
+                connecting: "Checking...",
+                connect_success: "✅ Gateway activated successfully!",
+                connect_fail: "❌ Activation failed: ",
+                models_title: "Auto-Detected Models",
+                provider_label: "Detected Provider:",
                 model_strong: "Strong Model (Complex Tasks)",
                 model_economy: "Economy Model (Simple Tasks)",
-                chat_title: "💬 Live Routing Lab",
+                stat_routing: "Smart Routing Savings",
+                stat_routing_desc: "Difference between Strong and Economy model costs.",
+                cost_comparison: "Cost Comparison (Per Request)",
+                stat_old: "Old Cost (GPT-4o)",
+                stat_new: "Klyro Cost",
+                chat_title: "Live Cost Simulator",
+                not_connected: "Not Connected",
                 connected: "Connected",
-                chat_welcome: "Welcome to Klyro. Type below to test smart routing.",
+                chat_welcome: "Please activate the gateway first to start chatting.",
                 chat_placeholder: "Type your prompt here...",
-                btn_send: "Send",
-                route_hard: "🔴 Routed: Strong Model (HARD)",
-                route_easy: "🟢 Routed: Economy Model (EASY)",
-                thinking: "Analyzing and routing..."
+                route_hard: "🔴 Routed: Strong Model",
+                route_easy: "🟢 Routed: Economy Model",
+                key_required: "Please enter an API key first."
             }
         };
 
         let currentLang = 'ar';
+        let isConnected = false;
+        const BACKEND_URL = "https://klyro-ai-gateway.de1.netrun.io"; // تأكد من تحديث هذا الرابط إذا لزم الأمر
+
+        // Elements
+        const apiKeyInput = document.getElementById('api-key');
+        const connectBtn = document.getElementById('connect-btn');
+        const connectBtnText = document.getElementById('connect-btn-text');
+        const connectSpinner = document.getElementById('connect-spinner');
+        const connectStatus = document.getElementById('connect-status');
+        const modelsCard = document.getElementById('models-card');
+        const chatSection = document.getElementById('chat-section');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const chatBox = document.getElementById('chat-box');
+        const chatPlaceholder = document.getElementById('chat-placeholder');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const routeBadge = document.getElementById('route-badge');
 
         function toggleLanguage() {
             currentLang = currentLang === 'ar' ? 'en' : 'ar';
             const html = document.documentElement;
             html.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
             html.lang = currentLang;
+            document.getElementById('lang-text').innerText = currentLang === 'ar' ? 'English' : 'عربي';
 
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                if (translations[currentLang][key]) el.innerText = translations[currentLang][key];
+                if (translations[currentLang][key]) el.innerHTML = translations[currentLang][key];
             });
             document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                 const key = el.getAttribute('data-i18n-placeholder');
                 if (translations[currentLang][key]) el.placeholder = translations[currentLang][key];
             });
             
-            // Update route badge if visible
-            const badge = document.getElementById('route-badge');
-            if (!badge.classList.contains('hidden')) {
-                if (badge.classList.contains('bg-red-600')) badge.innerText = translations[currentLang].route_hard;
-                if (badge.classList.contains('bg-emerald-600')) badge.innerText = translations[currentLang].route_easy;
+            if (!routeBadge.classList.contains('hidden')) {
+                if (routeBadge.classList.contains('text-red-400')) routeBadge.innerText = translations[currentLang].route_hard;
+                if (routeBadge.classList.contains('text-emerald-400')) routeBadge.innerText = translations[currentLang].route_easy;
             }
         }
 
         document.getElementById('lang-toggle').addEventListener('click', toggleLanguage);
 
-        // --- 2. منطق الشات والاتصال بالسيرفر ---
-        const chatBox = document.getElementById('chat-box');
-        const userInput = document.getElementById('user-input');
-        const sendBtn = document.getElementById('send-btn');
-        const apiKeyInput = document.getElementById('api-key');
-        
-        // ⚠️ ضع رابط سيرفر Netrun الخاص بك هنا
-        const BACKEND_URL = "https://klyro-ai-gateway.de1.netrun.io/route";
+        connectBtn.addEventListener('click', async () => {
+            const key = apiKeyInput.value.trim();
+            if (!key) {
+                connectStatus.className = 'mt-4 text-sm font-medium block text-center text-red-400';
+                connectStatus.innerText = translations[currentLang].key_required;
+                return;
+            }
+
+            connectBtn.disabled = true;
+            connectBtnText.classList.add('hidden');
+            connectSpinner.classList.remove('hidden');
+            connectStatus.className = 'mt-4 text-sm font-medium block text-center text-cyan-400';
+            connectStatus.innerText = translations[currentLang].connecting;
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/detect_models`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: key })
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    isConnected = true;
+                    connectStatus.className = 'mt-4 text-sm font-medium block text-center text-emerald-400';
+                    connectStatus.innerText = translations[currentLang].connect_success;
+                    
+                    document.getElementById('detected-provider').innerText = data.provider.toUpperCase();
+                    document.getElementById('model-strong').innerText = data.strong_model;
+                    document.getElementById('model-economy').innerText = data.economy_model;
+                    
+                    modelsCard.classList.remove('disabled-overlay');
+                    chatSection.classList.remove('disabled-overlay');
+                    
+                    connectionIndicator.innerHTML = `<div class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></div> <span>${translations[currentLang].connected}</span>`;
+                    connectionIndicator.className = "flex items-center gap-2 text-sm text-emerald-400";
+                    
+                    chatPlaceholder.style.display = 'none';
+
+                } else {
+                    isConnected = false;
+                    connectStatus.className = 'mt-4 text-sm font-medium block text-center text-red-400';
+                    connectStatus.innerText = translations[currentLang].connect_fail + (data.error || "Unknown Error");
+                }
+            } catch (err) {
+                connectStatus.className = 'mt-4 text-sm font-medium block text-center text-red-400';
+                connectStatus.innerText = translations[currentLang].connect_fail + err.message;
+            } finally {
+                connectBtn.disabled = false;
+                connectBtnText.classList.remove('hidden');
+                connectSpinner.classList.add('hidden');
+            }
+        });
 
         function addMessage(text, sender) {
             const div = document.createElement('div');
-            div.className = `p-3 rounded-lg max-w-[80%] ${sender === 'user' ? 'bg-slate-700 ml-auto text-white' : 'bg-slate-800 border border-slate-600 text-slate-200'}`;
-            div.innerText = text;
+            if (sender === 'user') {
+                div.className = 'flex justify-end';
+                div.innerHTML = `<div class="bg-slate-700 text-white rounded-2xl rounded-tr-sm py-3 px-5 max-w-[85%] shadow-sm">${text}</div>`;
+            } else {
+                div.className = 'flex justify-start';
+                div.innerHTML = `<div class="bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl rounded-tl-sm py-3 px-5 max-w-[85%] shadow-sm">${text}</div>`;
+            }
             chatBox.appendChild(div);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
         async function sendMessage() {
+            if (!isConnected) return;
             const prompt = userInput.value.trim();
             const apiKey = apiKeyInput.value.trim();
-
             if (!prompt) return;
-            if (!apiKey) {
-                alert(currentLang === 'ar' ? "الرجاء إدخال مفتاح API أولاً." : "Please enter your API key first.");
-                return;
-            }
 
             addMessage(prompt, 'user');
             userInput.value = '';
             sendBtn.disabled = true;
-            sendBtn.innerText = translations[currentLang].thinking;
+            sendBtn.innerHTML = `<svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
 
             try {
-                const response = await fetch(BACKEND_URL, {
+                const response = await fetch(`${BACKEND_URL}/route`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt: prompt, api_key: apiKey })
@@ -211,35 +426,30 @@
                 if (data.status === 'success') {
                     addMessage(data.answer, 'bot');
                     
-                    // تحديث الإحصائيات
                     document.getElementById('stat-old-cost').innerText = `$${data.cost_gpt4o.toFixed(6)}`;
                     document.getElementById('stat-new-cost').innerText = `$${data.new_cost.toFixed(6)}`;
-                    document.getElementById('stat-total-saved').innerText = `$${(data.cost_gpt4o - data.new_cost).toFixed(6)}`;
                     document.getElementById('stat-routing-saved').innerText = `$${data.routing_saved.toFixed(6)}`;
                     
-                    // تحديث النماذج المكتشفة
-                    document.getElementById('model-strong').innerText = data.strong_model_selected;
-                    document.getElementById('model-economy').innerText = data.economy_model_selected;
+                    // Update progress bar
+                    const percent = Math.max(5, (data.new_cost / data.cost_gpt4o) * 100);
+                    document.getElementById('cost-bar').style.width = `${percent}%`;
 
-                    // تحديث شارة التوجيه
-                    const badge = document.getElementById('route-badge');
-                    badge.classList.remove('hidden', 'bg-red-600', 'bg-emerald-600');
+                    routeBadge.classList.remove('hidden', 'text-red-400', 'border-red-500', 'bg-red-500/10', 'text-emerald-400', 'border-emerald-500', 'bg-emerald-500/10');
                     if (data.route === 'HARD') {
-                        badge.classList.add('bg-red-600');
-                        badge.innerText = translations[currentLang].route_hard;
+                        routeBadge.classList.add('text-red-400', 'border-red-500', 'bg-red-500/10');
+                        routeBadge.innerText = translations[currentLang].route_hard;
                     } else {
-                        badge.classList.add('bg-emerald-600');
-                        badge.innerText = translations[currentLang].route_easy;
+                        routeBadge.classList.add('text-emerald-400', 'border-emerald-500', 'bg-emerald-500/10');
+                        routeBadge.innerText = translations[currentLang].route_easy;
                     }
-
                 } else {
-                    addMessage(`❌ Error: ${data.error}`, 'bot');
+                    addMessage(`❌ ${data.error || 'Unknown Server Error'}`, 'bot');
                 }
             } catch (error) {
-                addMessage(`❌ Failed to connect to server: ${error.message}`, 'bot');
+                addMessage(`❌ Network Error: ${error.message}`, 'bot');
             } finally {
                 sendBtn.disabled = false;
-                sendBtn.innerText = translations[currentLang].btn_send;
+                sendBtn.innerHTML = `<svg class="w-5 h-5 transform rtl:-scale-x-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>`;
             }
         }
 
