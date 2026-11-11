@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import os
 import re
 import uvicorn
-from litellm import completion, cost_per_token, completion_cost, get_llm_provider
+from litellm import completion, cost_per_token, completion_cost
 
 app = FastAPI()
 
@@ -42,14 +42,22 @@ PROVIDER_MODEL_MAP = {
 }
 
 def detect_provider_and_models(api_key: str):
-    try:
-        _, provider, _, _ = get_llm_provider(model="gpt-3.5-turbo", api_key=api_key)
-        provider = provider.lower()
-    except Exception:
-        if api_key.startswith("gsk_"): provider = "groq"
-        elif api_key.startswith("sk-ant-"): provider = "anthropic"
-        else: provider = "openai"
-    return provider, PROVIDER_MODEL_MAP.get(provider, PROVIDER_MODEL_MAP["groq"])
+    """اكتشاف المزود والنماذج بناءً على بادئة المفتاح (الطريقة الأضمن)"""
+    api_key = api_key.strip()
+    if api_key.startswith("gsk_"):
+        provider = "groq"
+    elif api_key.startswith("sk-ant-"):
+        provider = "anthropic"
+    elif api_key.startswith("sk-or-"):
+        provider = "openrouter"
+    elif api_key.startswith("sk-"):
+        provider = "openai"
+    else:
+        # إذا كانت البادئة غير معروفة، نستخدم Groq كافتراضي
+        provider = "groq"
+
+    models = PROVIDER_MODEL_MAP.get(provider, PROVIDER_MODEL_MAP["groq"])
+    return provider, models
 
 def smart_heuristic_router(prompt: str) -> str:
     text = prompt.strip()
@@ -99,7 +107,6 @@ def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -
 
     return 0.0
 
-# --- نقطة النهاية الجديدة لاكتشاف المفتاح والنماذج ---
 @app.post("/detect_models")
 async def detect_models(request: ConnectRequest):
     if not request.api_key or len(request.api_key) < 5:
@@ -107,7 +114,6 @@ async def detect_models(request: ConnectRequest):
     
     provider, models = detect_provider_and_models(request.api_key)
     
-    # فحص سريع جداً للتأكد من أن المفتاح يعمل (استدعاء رخيص جداً)
     try:
         completion(
             model=models["economy"],
