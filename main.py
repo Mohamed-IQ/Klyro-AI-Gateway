@@ -5,7 +5,8 @@ import os
 import re
 import time
 import uvicorn
-from litellm import completion, cost_per_token, completion_cost
+import litellm
+from litellm import completion, cost_per_token, completion_cost, get_model_info
 
 app = FastAPI()
 
@@ -24,33 +25,49 @@ class ChatRequest(BaseModel):
 class ConnectRequest(BaseModel):
     api_key: str
 
-PROVIDER_MODEL_MAP = {
-    "groq": {
-        "router": "groq/llama3-8b-8192",
-        "strong": "groq/openai/gpt-oss-120b",
-        "economy": "groq/openai/gpt-oss-20b",
-    },
-    "openai": {
-        "router": "gpt-4o-mini",
-        "strong": "gpt-4o",
-        "economy": "gpt-4o-mini",
-    },
-    "anthropic": {
-        "router": "anthropic/claude-3-haiku-20240307",
-        "strong": "anthropic/claude-3-5-sonnet-20240620",
-        "economy": "anthropic/claude-3-haiku-20240307",
-    },
-}
-
-def detect_provider_and_models(api_key: str):
+# --- 1. اكتشاف المزود (بدون تخمين) ---
+def detect_provider(api_key: str):
     api_key = api_key.strip()
-    if api_key.startswith("gsk_"): provider = "groq"
-    elif api_key.startswith("sk-ant-"): provider = "anthropic"
-    elif api_key.startswith("sk-or-"): provider = "openrouter"
-    elif api_key.startswith("sk-"): provider = "openai"
-    else: provider = "groq"
-    return provider, PROVIDER_MODEL_MAP.get(provider, PROVIDER_MODEL_MAP["groq"])
+    if api_key.startswith("gsk_"): return "groq"
+    elif api_key.startswith("sk-ant-"): return "anthropic"
+    elif api_key.startswith("sk-or-"): return "openrouter"
+    elif api_key.startswith("sk-"): return "openai"
+    return "groq" # الافتراضي
 
+# --- 2. السحر الجديد: الاكتشاف الديناميكي للموديلات ---
+def get_dynamic_models(provider: str):
+    """جلب كل الموديلات من LiteLLM وتصنيفها تلقائياً بناءً على السعر"""
+    provider_models = []
+    
+    # نمر على كل الموديلات الموجودة بالمكتبة
+    for model_name, info in litellm.model_cost.items():
+        # نتأكد إن الموديل تابع لنفس المزود، ونوعه "محادثة" (مو توليد صور أو صوت)
+        if info.get("litellm_provider") == provider and info.get("mode") == "chat":
+            in_cost = info.get("input_cost_per_token", 0)
+            out_cost = info.get("output_cost_per_token", 0)
+            total_cost = in_cost + out_cost
+            
+            # نستبعد الموديلات اللي سعرها صفر أو غير محدد
+            if total_cost > 0:
+                provider_models.append({
+                    "name": model_name,
+                    "cost": total_cost
+                })
+    
+    # إذا ما لقينا موديلات (مثلاً المزود جديد)، نرجع قيم افتراضية آمنة
+    if not provider_models:
+        return "groq/openai/gpt-oss-120b", "groq/openai/gpt-oss-20b"
+    
+    # نرتب الموديلات حسب السعر (من الأرخص للأغلى)
+    provider_models.sort(key=lambda x: x["cost"])
+    
+    # الاقتصادي هو الأرخص، القوي هو الأغلى
+    economy_model = provider_models[0]["name"]
+    strong_model = provider_models[-1]["name"]
+    
+    return strong_model, economy_model
+
+# --- 3. الموزع الذكي (Heuristics) ---
 def smart_heuristic_router(prompt: str) -> str:
     text = prompt.strip()
     lower_text = text.lower()
@@ -70,39 +87,35 @@ def smart_heuristic_router(prompt: str) -> str:
         return "HARD"
     return "UNKNOWN" 
 
+# --- 4. دالة حساب التكلفة الحية ---
 def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
     try:
         p_cost, c_cost = cost_per_token(model=model_name, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
         if p_cost + c_cost > 0: return p_cost + c_cost
     except Exception: pass
-    try:
-        class MockResponse:
-            def __init__(self, model, prompt_tokens, completion_tokens):
-                self.model = model
-                self.usage = type('obj', (object,), {'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens})
-        cost = completion_cost(completion_response=MockResponse(model_name, prompt_tokens, completion_tokens))
-        if cost > 0: return cost
-    except Exception: pass
     return 0.0
 
-# --- دالة داخلية مشتركة لمعالجة الطلبات (تستخدمها الواجهة والشركات) ---
+# --- 5. دالة المعالجة المشتركة ---
 async def process_routing_logic(prompt: str, api_key: str):
-    provider, models = detect_provider_and_models(api_key)
+    provider = detect_provider(api_key)
+    strong_model, economy_model = get_dynamic_models(provider)
+    
     heuristic = smart_heuristic_router(prompt)
     
     if heuristic == "EASY":
-        model_chosen, route_type = models["economy"], "EASY"
+        model_chosen, route_type = economy_model, "EASY"
     elif heuristic == "HARD":
-        model_chosen, route_type = models["strong"], "HARD"
+        model_chosen, route_type = strong_model, "HARD"
     else:
+        # الموزع الذكي (نستخدم الاقتصادي كموزع لتوفير المال)
         try:
-            prompt_router = "أنت مدير مالي صارم. صنف السؤال إلى EASY أو HARD. (EASY للأسئلة العادية، HARD للأكواد والتحليل). اكتب كلمة واحدة فقط."
-            route_decision = completion(model=models["router"], messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": prompt}], temperature=0, api_key=api_key, drop_params=True)
+            prompt_router = "صنف السؤال إلى EASY أو HARD. (EASY للأسئلة العادية، HARD للأكواد والتحليل). اكتب كلمة واحدة فقط."
+            route_decision = completion(model=economy_model, messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": prompt}], temperature=0, api_key=api_key, drop_params=True)
             route_type = route_decision.choices[0].message.content.strip().upper()
             if "HARD" not in route_type: route_type = "EASY"
         except Exception: route_type = "EASY"
         
-        model_chosen = models["strong"] if route_type == "HARD" else models["economy"]
+        model_chosen = strong_model if route_type == "HARD" else economy_model
 
     try:
         response = completion(
@@ -116,9 +129,9 @@ async def process_routing_logic(prompt: str, api_key: str):
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-    cost_strong = get_live_cost(models["strong"], tokens_in, tokens_out)
+    cost_strong = get_live_cost(strong_model, tokens_in, tokens_out)
     cost_actual = get_live_cost(model_chosen, tokens_in, tokens_out)
-    routing_saved = max(0, cost_strong - cost_actual) if "economy" in model_chosen else 0.0
+    routing_saved = max(0, cost_strong - cost_actual) if "economy" in model_chosen or model_chosen == economy_model else 0.0
     cost_gpt4o = get_live_cost("gpt-4o", tokens_in, tokens_out)
     
     return {
@@ -126,8 +139,8 @@ async def process_routing_logic(prompt: str, api_key: str):
         "provider": provider,
         "route": route_type,
         "model_used": model_chosen,
-        "strong_model_selected": models["strong"],
-        "economy_model_selected": models["economy"],
+        "strong_model_selected": strong_model,
+        "economy_model_selected": economy_model,
         "answer": answer,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
@@ -138,71 +151,61 @@ async def process_routing_logic(prompt: str, api_key: str):
         "total_saved": max(0, cost_gpt4o - cost_actual)
     }
 
-# --- 1. Endpoint الواجهة التجريبية ---
+# --- 6. Endpoints ---
 @app.post("/detect_models")
 async def detect_models(request: ConnectRequest):
     if not request.api_key or len(request.api_key) < 5:
         return {"error": "مفتاح API غير صالح", "status": "error"}
-    provider, models = detect_provider_and_models(request.api_key)
+    
+    provider = detect_provider(request.api_key)
+    strong_model, economy_model = get_dynamic_models(provider)
+    
+    # فحص سريع جداً للتأكد من أن المفتاح يعمل
     try:
-        completion(model=models["economy"], messages=[{"role": "user", "content": "hi"}], api_key=request.api_key, max_tokens=1, drop_params=True)
+        completion(model=economy_model, messages=[{"role": "user", "content": "hi"}], api_key=request.api_key, max_tokens=1, drop_params=True)
     except Exception as e:
         return {"error": f"فشل الاتصال. ({str(e)})", "status": "error"}
-    return {"status": "success", "provider": provider, "strong_model": models["strong"], "economy_model": models["economy"]}
+        
+    return {
+        "status": "success", 
+        "provider": provider, 
+        "strong_model": strong_model, 
+        "economy_model": economy_model
+    }
 
 @app.post("/route")
 async def route_chat(request: ChatRequest):
     return await process_routing_logic(request.prompt, request.api_key)
 
-# --- 2. Endpoint الشركات (متوافق 100% مع OpenAI SDK) ---
 @app.post("/v1/chat/completions")
 async def enterprise_chat_completions(request: Request):
-    # 1. سحب المفتاح من الهيدر (Authorization: Bearer sk-...)
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        return JSONResponse(status_code=401, content={"error": {"message": "Missing or invalid Authorization header", "type": "invalid_request_error"}})
+        return JSONResponse(status_code=401, content={"error": {"message": "Missing header", "type": "invalid_request_error"}})
     
     api_key = auth_header.replace("Bearer ", "").strip()
-
-    # 2. سحب البيانات من الطلب
     try:
         body = await request.json()
         messages = body.get("messages", [])
-        if not messages:
-            raise ValueError("No messages found")
-        # استخراج آخر سؤال من المستخدم
         prompt = messages[-1].get("content", "")
     except Exception:
-        return JSONResponse(status_code=400, content={"error": {"message": "Invalid JSON body", "type": "invalid_request_error"}})
+        return JSONResponse(status_code=400, content={"error": {"message": "Invalid JSON", "type": "invalid_request_error"}})
 
-    # 3. تطبيق التوجيه الذكي
     result = await process_routing_logic(prompt, api_key)
 
     if result["status"] == "error":
-        return JSONResponse(status_code=500, content={"error": {"message": result["error"], "type": "klyro_routing_error"}})
+        return JSONResponse(status_code=500, content={"error": {"message": result["error"], "type": "klyro_error"}})
 
-    # 4. تحويل الرد لصيغة OpenAI القياسية (حتى لا يشعر نظام الشركة بأي فرق)
     return {
         "id": f"chatcmpl-klyro-{int(time.time())}",
         "object": "chat.completion",
         "created": int(time.time()),
-        # نرجع اسم الموديل اللي طلبته الشركة عشان ما ينكسر نظامهم (حتى لو استخدمنا Groq بالخلفية)
         "model": body.get("model", "gpt-4o"), 
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": result["answer"]},
-            "finish_reason": "stop"
-        }],
-        "usage": {
-            "prompt_tokens": result["tokens_in"],
-            "completion_tokens": result["tokens_out"],
-            "total_tokens": result["tokens_in"] + result["tokens_out"]
-        },
-        # إحنه نضيف معلومات Klyro كـ "حقل مخفي" للعميل يشوفه بالـ Dashboard
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": result["answer"]}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": result["tokens_in"], "completion_tokens": result["tokens_out"], "total_tokens": result["tokens_in"] + result["tokens_out"]},
         "klyro_metadata": {
             "routing_saved": result["routing_saved"],
             "cost_actual": result["new_cost"],
-            "cost_gpt4o": result["cost_gpt4o"],
             "smart_route": result["route"]
         }
     }
