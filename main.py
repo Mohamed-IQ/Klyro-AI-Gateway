@@ -69,26 +69,17 @@ def smart_heuristic_router(prompt: str) -> str:
     return "UNKNOWN" 
 
 def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """
-    دالة مركزية لجلب التكلفة الحية من LiteLLM.
-    تحاول استخدام cost_per_token أولاً، ثم completion_cost كخطة بديلة.
-    """
     try:
-        # المحاولة الأولى: cost_per_token (أدق وتجلب الأسعار الحية)
-        prompt_cost, completion_cost = cost_per_token(
+        prompt_cost, completion_cost_val = cost_per_token(
             model=model_name,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens
         )
-        total = prompt_cost + completion_cost
-        if total > 0:
-            return total
+        total = prompt_cost + completion_cost_val
+        if total > 0: return total
     except Exception:
         pass
-
     try:
-        # المحاولة الثانية: completion_cost (تتطلب كائن الاستجابة، لكنها تعمل كبديل)
-        # سنقوم بإنشاء كائن وهمي بسيط لتجنب الأخطاء
         class MockResponse:
             def __init__(self, model, prompt_tokens, completion_tokens):
                 self.model = model
@@ -98,12 +89,9 @@ def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -
                 })
         mock_resp = MockResponse(model_name, prompt_tokens, completion_tokens)
         cost = completion_cost(completion_response=mock_resp)
-        if cost > 0:
-            return cost
+        if cost > 0: return cost
     except Exception:
         pass
-
-    # إذا فشل كل شيء، نرجع 0.0 (لكن هذا يعني عدم وجود تسعير حي)
     return 0.0
 
 @app.post("/route")
@@ -160,19 +148,21 @@ async def route_chat(request: ChatRequest):
     except Exception as e:
         return {"error": f"فشل توليد الإجابة: {str(e)}", "status": "error"}
 
-    # --- حسابات التكلفة الحية (بدون أي أرقام ثابتة) ---
-    # 1. تكلفة GPT-4o (خط الأساس للمقارنة)
-    cost_gpt4o = get_live_cost("gpt-4o", tokens_in, tokens_out)
+    # --- حسابات التكلفة الحية (داخل نفس المزود) ---
     
-    # 2. تكلفة النموذج القوي (لو ذهب السؤال له)
+    # 1. تكلفة النموذج القوي (لو ذهب السؤال له) - من نفس مزود العميل
     cost_strong = get_live_cost(models["strong"], tokens_in, tokens_out)
     
-    # 3. التكلفة الفعلية (النموذج اللي اشتغل فعلاً)
+    # 2. تكلفة النموذج الاقتصادي (اللي اشتغل فعلاً) - من نفس مزود العميل
     cost_actual = get_live_cost(model_chosen, tokens_in, tokens_out)
 
-    # 4. حساب الوفر
-    total_saved = max(0, cost_gpt4o - cost_actual)
+    # 3. حساب الوفر الحقيقي (المقارنة داخل نفس المزود)
+    # إذا اشتغل الاقتصادي، الوفر هو الفرق بين القوي والاقتصادي.
+    # إذا اشتغل القوي، الوفر = 0 (لأنه استخدم أقوى شي متوفر بالمزود).
     routing_saved = max(0, cost_strong - cost_actual) if "ECONOMY" in model_name else 0.0
+
+    # 4. بونص: مقارنة GPT-4o (للتسويق فقط، للعميل اللي يستخدم OpenAI أو غيره)
+    cost_gpt4o = get_live_cost("gpt-4o", tokens_in, tokens_out)
 
     return {
         "status": "success",
@@ -182,11 +172,10 @@ async def route_chat(request: ChatRequest):
         "answer": answer,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
-        "cost_gpt4o": cost_gpt4o,
-        "cost_strong_groq": cost_strong,
-        "new_cost": cost_actual,
-        "total_saved": total_saved,
-        "routing_saved": routing_saved
+        "cost_strong_provider": cost_strong, # تكلفة النموذج القوي لمزود العميل
+        "new_cost": cost_actual,             # التكلفة الفعلية اللي دفعها العميل
+        "routing_saved": routing_saved,      # الوفر الحقيقي (القوي - الاقتصادي)
+        "cost_gpt4o": cost_gpt4o             # بونص للتسويق
     }
 
 if __name__ == "__main__":
