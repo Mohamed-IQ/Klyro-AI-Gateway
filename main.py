@@ -1,8 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import re
+import time
 import uvicorn
 from litellm import completion, cost_per_token, completion_cost
 
@@ -42,22 +43,13 @@ PROVIDER_MODEL_MAP = {
 }
 
 def detect_provider_and_models(api_key: str):
-    """اكتشاف المزود والنماذج بناءً على بادئة المفتاح (الطريقة الأضمن)"""
     api_key = api_key.strip()
-    if api_key.startswith("gsk_"):
-        provider = "groq"
-    elif api_key.startswith("sk-ant-"):
-        provider = "anthropic"
-    elif api_key.startswith("sk-or-"):
-        provider = "openrouter"
-    elif api_key.startswith("sk-"):
-        provider = "openai"
-    else:
-        # إذا كانت البادئة غير معروفة، نستخدم Groq كافتراضي
-        provider = "groq"
-
-    models = PROVIDER_MODEL_MAP.get(provider, PROVIDER_MODEL_MAP["groq"])
-    return provider, models
+    if api_key.startswith("gsk_"): provider = "groq"
+    elif api_key.startswith("sk-ant-"): provider = "anthropic"
+    elif api_key.startswith("sk-or-"): provider = "openrouter"
+    elif api_key.startswith("sk-"): provider = "openai"
+    else: provider = "groq"
+    return provider, PROVIDER_MODEL_MAP.get(provider, PROVIDER_MODEL_MAP["groq"])
 
 def smart_heuristic_router(prompt: str) -> str:
     text = prompt.strip()
@@ -76,125 +68,64 @@ def smart_heuristic_router(prompt: str) -> str:
     hard_keywords = ["كود", "code", "برمجة", "دالة", "function", "خطأ", "error", "تحليل بيانات", "data analysis", "خطة عمل", "business plan"]
     if any(k in lower_text for k in hard_keywords):
         return "HARD"
-        
     return "UNKNOWN" 
 
 def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
     try:
-        prompt_cost, completion_cost_val = cost_per_token(
-            model=model_name,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens
-        )
-        total = prompt_cost + completion_cost_val
-        if total > 0: return total
-    except Exception:
-        pass
-
+        p_cost, c_cost = cost_per_token(model=model_name, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+        if p_cost + c_cost > 0: return p_cost + c_cost
+    except Exception: pass
     try:
         class MockResponse:
             def __init__(self, model, prompt_tokens, completion_tokens):
                 self.model = model
-                self.usage = type('obj', (object,), {
-                    'prompt_tokens': prompt_tokens,
-                    'completion_tokens': completion_tokens
-                })
-        mock_resp = MockResponse(model_name, prompt_tokens, completion_tokens)
-        cost = completion_cost(completion_response=mock_resp)
+                self.usage = type('obj', (object,), {'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens})
+        cost = completion_cost(completion_response=MockResponse(model_name, prompt_tokens, completion_tokens))
         if cost > 0: return cost
-    except Exception:
-        pass
-
+    except Exception: pass
     return 0.0
 
-@app.post("/detect_models")
-async def detect_models(request: ConnectRequest):
-    if not request.api_key or len(request.api_key) < 5:
-        return {"error": "مفتاح API غير صالح", "status": "error"}
+# --- دالة داخلية مشتركة لمعالجة الطلبات (تستخدمها الواجهة والشركات) ---
+async def process_routing_logic(prompt: str, api_key: str):
+    provider, models = detect_provider_and_models(api_key)
+    heuristic = smart_heuristic_router(prompt)
     
-    provider, models = detect_provider_and_models(request.api_key)
-    
-    try:
-        completion(
-            model=models["economy"],
-            messages=[{"role": "user", "content": "hi"}],
-            api_key=request.api_key,
-            max_tokens=1,
-            drop_params=True
-        )
-    except Exception as e:
-        return {"error": f"فشل الاتصال بالمزود. تأكد من صحة المفتاح. ({str(e)})", "status": "error"}
-
-    return {
-        "status": "success",
-        "provider": provider,
-        "strong_model": models["strong"],
-        "economy_model": models["economy"]
-    }
-
-@app.post("/route")
-async def route_chat(request: ChatRequest):
-    provider, models = detect_provider_and_models(request.api_key)
-    heuristic_decision = smart_heuristic_router(request.prompt)
-    
-    if heuristic_decision == "EASY":
-        model_chosen = models["economy"]
-        model_name = f"ECONOMY (Heuristic) - {provider}"
-    elif heuristic_decision == "HARD":
-        model_chosen = models["strong"]
-        model_name = f"STRONG (Heuristic) - {provider}"
+    if heuristic == "EASY":
+        model_chosen, route_type = models["economy"], "EASY"
+    elif heuristic == "HARD":
+        model_chosen, route_type = models["strong"], "HARD"
     else:
         try:
-            prompt_router = """
-أنت مدير مالي وتقني (CTO) صارم جداً في تقليل التكاليف.
-مهمتك: تصنيف سؤال المستخدم إلى EASY أو HARD. اكتب كلمة واحدة فقط.
-- EASY: التحيات، الأسئلة العامة، الترجمات، التعريفات، الأسئلة الحسابية البسيطة، كتابة رسائل قصيرة، المحادثات العادية.
-- HARD: كتابة أكواد برمجية، تصحيح أخطاء برمجية، تحليل بيانات معقدة، حل مسائل رياضية معقدة، أو إنشاء خطط عمل واستراتيجيات كبيرة.
-إذا كنت متردداً، صنفه EASY.
-اكتب EASY أو HARD فقط.
-"""
-            route_decision = completion(
-                model=models["router"],
-                messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": request.prompt}],
-                temperature=0,
-                api_key=request.api_key,
-                drop_params=True
-            )
+            prompt_router = "أنت مدير مالي صارم. صنف السؤال إلى EASY أو HARD. (EASY للأسئلة العادية، HARD للأكواد والتحليل). اكتب كلمة واحدة فقط."
+            route_decision = completion(model=models["router"], messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": prompt}], temperature=0, api_key=api_key, drop_params=True)
             route_type = route_decision.choices[0].message.content.strip().upper()
-        except Exception:
-            route_type = "EASY"
-
-        if "HARD" in route_type:
-            model_chosen = models["strong"]
-            model_name = f"STRONG (LLM Router) - {provider}"
-        else:
-            model_chosen = models["economy"]
-            model_name = f"ECONOMY (LLM Router) - {provider}"
+            if "HARD" not in route_type: route_type = "EASY"
+        except Exception: route_type = "EASY"
+        
+        model_chosen = models["strong"] if route_type == "HARD" else models["economy"]
 
     try:
         response = completion(
             model=model_chosen,
-            messages=[{"role": "system", "content": "أجب باختصار شديد وبدون مقدمات."}, {"role": "user", "content": request.prompt}],
-            api_key=request.api_key,
-            drop_params=True
+            messages=[{"role": "system", "content": "أجب باختصار شديد وبدون مقدمات."}, {"role": "user", "content": prompt}],
+            api_key=api_key, drop_params=True
         )
         answer = response.choices[0].message.content
         tokens_in = response.usage.prompt_tokens
         tokens_out = response.usage.completion_tokens
     except Exception as e:
-        return {"error": f"فشل توليد الإجابة: {str(e)}", "status": "error"}
+        return {"status": "error", "error": str(e)}
 
     cost_strong = get_live_cost(models["strong"], tokens_in, tokens_out)
     cost_actual = get_live_cost(model_chosen, tokens_in, tokens_out)
-    routing_saved = max(0, cost_strong - cost_actual) if "ECONOMY" in model_name else 0.0
+    routing_saved = max(0, cost_strong - cost_actual) if "economy" in model_chosen else 0.0
     cost_gpt4o = get_live_cost("gpt-4o", tokens_in, tokens_out)
-    total_saved = max(0, cost_gpt4o - cost_actual)
-
+    
     return {
         "status": "success",
         "provider": provider,
-        "route": "HARD" if "STRONG" in model_name else "EASY",
-        "model_used": model_name,
+        "route": route_type,
+        "model_used": model_chosen,
         "strong_model_selected": models["strong"],
         "economy_model_selected": models["economy"],
         "answer": answer,
@@ -204,7 +135,76 @@ async def route_chat(request: ChatRequest):
         "new_cost": cost_actual,
         "routing_saved": routing_saved,
         "cost_gpt4o": cost_gpt4o,
-        "total_saved": total_saved
+        "total_saved": max(0, cost_gpt4o - cost_actual)
+    }
+
+# --- 1. Endpoint الواجهة التجريبية ---
+@app.post("/detect_models")
+async def detect_models(request: ConnectRequest):
+    if not request.api_key or len(request.api_key) < 5:
+        return {"error": "مفتاح API غير صالح", "status": "error"}
+    provider, models = detect_provider_and_models(request.api_key)
+    try:
+        completion(model=models["economy"], messages=[{"role": "user", "content": "hi"}], api_key=request.api_key, max_tokens=1, drop_params=True)
+    except Exception as e:
+        return {"error": f"فشل الاتصال. ({str(e)})", "status": "error"}
+    return {"status": "success", "provider": provider, "strong_model": models["strong"], "economy_model": models["economy"]}
+
+@app.post("/route")
+async def route_chat(request: ChatRequest):
+    return await process_routing_logic(request.prompt, request.api_key)
+
+# --- 2. Endpoint الشركات (متوافق 100% مع OpenAI SDK) ---
+@app.post("/v1/chat/completions")
+async def enterprise_chat_completions(request: Request):
+    # 1. سحب المفتاح من الهيدر (Authorization: Bearer sk-...)
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"error": {"message": "Missing or invalid Authorization header", "type": "invalid_request_error"}})
+    
+    api_key = auth_header.replace("Bearer ", "").strip()
+
+    # 2. سحب البيانات من الطلب
+    try:
+        body = await request.json()
+        messages = body.get("messages", [])
+        if not messages:
+            raise ValueError("No messages found")
+        # استخراج آخر سؤال من المستخدم
+        prompt = messages[-1].get("content", "")
+    except Exception:
+        return JSONResponse(status_code=400, content={"error": {"message": "Invalid JSON body", "type": "invalid_request_error"}})
+
+    # 3. تطبيق التوجيه الذكي
+    result = await process_routing_logic(prompt, api_key)
+
+    if result["status"] == "error":
+        return JSONResponse(status_code=500, content={"error": {"message": result["error"], "type": "klyro_routing_error"}})
+
+    # 4. تحويل الرد لصيغة OpenAI القياسية (حتى لا يشعر نظام الشركة بأي فرق)
+    return {
+        "id": f"chatcmpl-klyro-{int(time.time())}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        # نرجع اسم الموديل اللي طلبته الشركة عشان ما ينكسر نظامهم (حتى لو استخدمنا Groq بالخلفية)
+        "model": body.get("model", "gpt-4o"), 
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": result["answer"]},
+            "finish_reason": "stop"
+        }],
+        "usage": {
+            "prompt_tokens": result["tokens_in"],
+            "completion_tokens": result["tokens_out"],
+            "total_tokens": result["tokens_in"] + result["tokens_out"]
+        },
+        # إحنه نضيف معلومات Klyro كـ "حقل مخفي" للعميل يشوفه بالـ Dashboard
+        "klyro_metadata": {
+            "routing_saved": result["routing_saved"],
+            "cost_actual": result["new_cost"],
+            "cost_gpt4o": result["cost_gpt4o"],
+            "smart_route": result["route"]
+        }
     }
 
 if __name__ == "__main__":
