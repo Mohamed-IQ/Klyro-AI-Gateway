@@ -69,7 +69,6 @@
     <nav class="glass-card sticky top-0 z-50 border-b border-slate-700/50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-20">
-                <!-- Logo -->
                 <div class="flex items-center gap-3">
                     <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-extrabold text-2xl shadow-lg shadow-emerald-500/20">
                         K
@@ -80,7 +79,6 @@
                     </div>
                 </div>
                 
-                <!-- Language Toggle -->
                 <button id="lang-toggle" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 transition text-sm font-medium">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
                     <span id="lang-text">English</span>
@@ -133,19 +131,16 @@
                 </div>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <!-- Provider -->
                     <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 md:col-span-2 flex justify-between items-center">
                         <span class="text-slate-400 font-medium" data-i18n="provider_label">المزود المكتشف:</span>
                         <span class="text-cyan-400 font-bold text-lg" id="detected-provider">---</span>
                     </div>
                     
-                    <!-- Strong Model -->
                     <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 border-l-4 border-l-red-500">
                         <p class="text-xs text-slate-400 mb-1" data-i18n="model_strong">النموذج القوي (للمهام المعقدة)</p>
                         <p class="text-sm font-mono text-red-400 font-bold break-all" id="model-strong">---</p>
                     </div>
                     
-                    <!-- Economy Model -->
                     <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 border-l-4 border-l-emerald-500">
                         <p class="text-xs text-slate-400 mb-1" data-i18n="model_economy">النموذج الاقتصادي (للمهام البسيطة)</p>
                         <p class="text-sm font-mono text-emerald-400 font-bold break-all" id="model-economy">---</p>
@@ -162,19 +157,22 @@
                 <!-- Total Savings Card -->
                 <div class="glass-card rounded-2xl p-6 border-t-4 border-t-emerald-500 relative overflow-hidden">
                     <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl"></div>
-                    <h3 class="text-slate-300 font-semibold mb-1" data-i18n="stat_routing">وفر التوجيه الذكي (Routing Savings)</h3>
+                    <h3 class="text-slate-300 font-semibold mb-1" data-i18n="stat_routing">إجمالي وفر التوجيه الذكي</h3>
                     <p class="text-4xl font-extrabold text-emerald-400 glow-text mt-2" id="stat-routing-saved">$0.000000</p>
-                    <p class="text-xs text-slate-500 mt-2" data-i18n="stat_routing_desc">الفرق بين تكلفة النموذج القوي والاقتصادي.</p>
+                    <p class="text-xs text-slate-500 mt-2" data-i18n="stat_routing_desc">التراكمي للفرق بين النموذج القوي والاقتصادي.</p>
                 </div>
 
                 <!-- Cost Comparison -->
-                <div class="glass-card rounded-2xl p-6">
-                    <h3 class="text-slate-300 font-semibold mb-4" data-i18n="cost_comparison">مقارنة التكلفة (لكل طلب)</h3>
+                <div class="glass-card rounded-2xl p-6 relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-slate-300 font-semibold" data-i18n="cost_comparison">إجمالي التكلفة المتراكمة</h3>
+                        <button id="reset-btn" class="text-xs bg-slate-700 hover:bg-red-500/80 text-white px-2 py-1 rounded transition" title="مسح الإحصائيات">تصفير</button>
+                    </div>
                     
                     <div class="space-y-4">
                         <div>
                             <div class="flex justify-between text-sm mb-1">
-                                <span class="text-slate-400" data-i18n="stat_old">التكلفة القديمة (GPT-4o)</span>
+                                <span class="text-slate-400" data-i18n="stat_old">إجمالي التكلفة القديمة (GPT-4o)</span>
                                 <span class="text-red-400 font-mono" id="stat-old-cost">$0.000000</span>
                             </div>
                             <div class="w-full bg-slate-700 rounded-full h-2"><div class="bg-red-500 h-2 rounded-full" style="width: 100%"></div></div>
@@ -182,7 +180,7 @@
                         
                         <div>
                             <div class="flex justify-between text-sm mb-1">
-                                <span class="text-slate-400" data-i18n="stat_new">تكلفة Klyro</span>
+                                <span class="text-slate-400" data-i18n="stat_new">إجمالي تكلفة Klyro</span>
                                 <span class="text-emerald-400 font-mono" id="stat-new-cost">$0.000000</span>
                             </div>
                             <div class="w-full bg-slate-700 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" id="cost-bar" style="width: 0%"></div></div>
@@ -211,7 +209,6 @@
                         </div>
                     </div>
 
-                    <!-- Route Badge -->
                     <div class="flex justify-center mb-4">
                         <div id="route-badge" class="hidden px-4 py-1.5 rounded-full text-sm font-bold border"></div>
                     </div>
@@ -228,10 +225,13 @@
     </main>
 
     <footer class="text-center text-slate-500 text-sm mt-12">
-        <p>&copy; 2024 Klyro AI Gateway. Enterprise Grade Cost Optimization.</p>
+        <p>&copy; <span id="current-year"></span> Klyro AI Gateway. Enterprise Grade Cost Optimization.</p>
     </footer>
 
     <script>
+        // تحديث السنة تلقائياً
+        document.getElementById('current-year').innerText = new Date().getFullYear();
+
         const translations = {
             ar: {
                 nav_subtitle: "توجيه ذكي وتوفير للتكاليف",
@@ -248,11 +248,11 @@
                 provider_label: "المزود المكتشف:",
                 model_strong: "النموذج القوي (للمهام المعقدة)",
                 model_economy: "النموذج الاقتصادي (للمهام البسيطة)",
-                stat_routing: "وفر التوجيه الذكي",
-                stat_routing_desc: "الفرق بين تكلفة النموذج القوي والاقتصادي.",
-                cost_comparison: "مقارنة التكلفة (لكل طلب)",
-                stat_old: "التكلفة القديمة (GPT-4o)",
-                stat_new: "تكلفة Klyro",
+                stat_routing: "إجمالي وفر التوجيه الذكي",
+                stat_routing_desc: "التراكمي للفرق بين النموذج القوي والاقتصادي.",
+                cost_comparison: "إجمالي التكلفة المتراكمة",
+                stat_old: "إجمالي التكلفة القديمة (GPT-4o)",
+                stat_new: "إجمالي تكلفة Klyro",
                 chat_title: "محاكي التكلفة الحي",
                 not_connected: "غير متصل",
                 connected: "متصل",
@@ -277,11 +277,11 @@
                 provider_label: "Detected Provider:",
                 model_strong: "Strong Model (Complex Tasks)",
                 model_economy: "Economy Model (Simple Tasks)",
-                stat_routing: "Smart Routing Savings",
-                stat_routing_desc: "Difference between Strong and Economy model costs.",
-                cost_comparison: "Cost Comparison (Per Request)",
-                stat_old: "Old Cost (GPT-4o)",
-                stat_new: "Klyro Cost",
+                stat_routing: "Total Smart Routing Savings",
+                stat_routing_desc: "Cumulative difference between Strong and Economy model costs.",
+                cost_comparison: "Total Accumulated Cost",
+                stat_old: "Total Old Cost (GPT-4o)",
+                stat_new: "Total Klyro Cost",
                 chat_title: "Live Cost Simulator",
                 not_connected: "Not Connected",
                 connected: "Connected",
@@ -295,7 +295,41 @@
 
         let currentLang = 'ar';
         let isConnected = false;
-        const BACKEND_URL = "https://klyro-ai-gateway.de1.netrun.io"; // تأكد من تحديث هذا الرابط إذا لزم الأمر
+        const BACKEND_URL = "https://klyro-ai-gateway.de1.netrun.io"; // تأكد من تحديث هذا الرابط
+
+        // --- إدارة الحالة المتراكمة (State Management) ---
+        let stats = {
+            old_cost: parseFloat(localStorage.getItem('klyro_old_cost')) || 0.0,
+            new_cost: parseFloat(localStorage.getItem('klyro_new_cost')) || 0.0,
+            routing_saved: parseFloat(localStorage.getItem('klyro_routing_saved')) || 0.0
+        };
+
+        function updateStatsUI() {
+            document.getElementById('stat-old-cost').innerText = `$${stats.old_cost.toFixed(6)}`;
+            document.getElementById('stat-new-cost').innerText = `$${stats.new_cost.toFixed(6)}`;
+            document.getElementById('stat-routing-saved').innerText = `$${stats.routing_saved.toFixed(6)}`;
+            
+            // تحديث شريط التقدم
+            let percent = 0;
+            if (stats.old_cost > 0) {
+                percent = Math.max(1, (stats.new_cost / stats.old_cost) * 100);
+            }
+            document.getElementById('cost-bar').style.width = `${percent}%`;
+        }
+        
+        // تحميل الإحصائيات عند فتح الصفحة
+        updateStatsUI();
+
+        // زر التصفير
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            if(confirm(currentLang === 'ar' ? 'هل أنت متأكد من مسح جميع الإحصائيات؟' : 'Are you sure you want to clear all stats?')) {
+                stats = { old_cost: 0.0, new_cost: 0.0, routing_saved: 0.0 };
+                localStorage.removeItem('klyro_old_cost');
+                localStorage.removeItem('klyro_new_cost');
+                localStorage.removeItem('klyro_routing_saved');
+                updateStatsUI();
+            }
+        });
 
         // Elements
         const apiKeyInput = document.getElementById('api-key');
@@ -426,13 +460,18 @@
                 if (data.status === 'success') {
                     addMessage(data.answer, 'bot');
                     
-                    document.getElementById('stat-old-cost').innerText = `$${data.cost_gpt4o.toFixed(6)}`;
-                    document.getElementById('stat-new-cost').innerText = `$${data.new_cost.toFixed(6)}`;
-                    document.getElementById('stat-routing-saved').innerText = `$${data.routing_saved.toFixed(6)}`;
+                    // --- التحديث التراكمي (Accumulation) ---
+                    stats.old_cost += data.cost_gpt4o;
+                    stats.new_cost += data.new_cost;
+                    stats.routing_saved += data.routing_saved;
                     
-                    // Update progress bar
-                    const percent = Math.max(5, (data.new_cost / data.cost_gpt4o) * 100);
-                    document.getElementById('cost-bar').style.width = `${percent}%`;
+                    // حفظ في المتصفح
+                    localStorage.setItem('klyro_old_cost', stats.old_cost);
+                    localStorage.setItem('klyro_new_cost', stats.new_cost);
+                    localStorage.setItem('klyro_routing_saved', stats.routing_saved);
+                    
+                    // تحديث الواجهة
+                    updateStatsUI();
 
                     routeBadge.classList.remove('hidden', 'text-red-400', 'border-red-500', 'bg-red-500/10', 'text-emerald-400', 'border-emerald-500', 'bg-emerald-500/10');
                     if (data.route === 'HARD') {
