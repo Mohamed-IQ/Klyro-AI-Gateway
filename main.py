@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import uvicorn
-from litellm import completion, get_model_info
+from litellm import completion, completion_cost
 
 app = FastAPI()
 
@@ -24,19 +24,18 @@ class ChatRequest(BaseModel):
 @app.post("/route")
 async def route_chat(request: ChatRequest):
     try:
-        # 1. الموزع الذكي (أزلنا reasoning_effort لحل مشكلة الـ 500)
-        prompt_router = "أنت موزع. اكتب EASY إذا كان السؤال بسيطاً، و HARD إذا كان معقداً (كود، تحليل، خطة). اكتب كلمة واحدة فقط."
+        prompt_router = "أنت موزع. اكتب EASY إذا كان السؤال بسيطاً، و HARD إذا كان معقداً. اكتب كلمة واحدة فقط."
         route_decision = completion(
             model="groq/openai/gpt-oss-20b",
             messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": request.prompt}],
             temperature=0,
-            api_key=request.api_key
+            api_key=request.api_key,
+            drop_params=True
         )
         route_type = route_decision.choices[0].message.content.strip().upper()
     except Exception as e:
         return {"error": f"فشل الاتصال: {str(e)}"}
 
-    # 2. التوجيه
     if "HARD" in route_type:
         model_chosen = "groq/openai/gpt-oss-120b"
         model_name = "HARD (Heavy Model)"
@@ -45,32 +44,30 @@ async def route_chat(request: ChatRequest):
         model_name = "EASY (Economic Model)"
 
     try:
-        concise_prompt = {"role": "system", "content": "أجب باختصار شديد وبدون مقدمات."}
         response = completion(
             model=model_chosen,
-            messages=[concise_prompt, {"role": "user", "content": request.prompt}],
-            api_key=request.api_key
+            messages=[{"role": "system", "content": "أجب باختصار شديد وبدون مقدمات."}, {"role": "user", "content": request.prompt}],
+            api_key=request.api_key,
+            drop_params=True
         )
         answer = response.choices[0].message.content
     except Exception as e:
         return {"error": f"فشل توليد الإجابة: {str(e)}"}
 
-    # 3. الحسابات الحقيقية (الأسعار الحية من LiteLLM)
+    # 3. الحسابات الحقيقية (باستخدام completion_cost)
     try:
-        model_info = get_model_info(model=model_chosen)
-        input_cost_per_token = model_info.get("input_cost_per_token", 0.0)
-        output_cost_per_token = model_info.get("output_cost_per_token", 0.0)
-        
+        real_cost_new = completion_cost(completion_response=response)
+    except Exception:
+        # خطة احتياطية: أسعار Groq الفعلية التقريبية
         tokens_in = response.usage.prompt_tokens
         tokens_out = response.usage.completion_tokens
-        
-        real_cost_new = (tokens_in * input_cost_per_token) + (tokens_out * output_cost_per_token)
-        old_cost = (tokens_in * request.PRICE_OLD_IN) + (tokens_out * request.PRICE_OLD_OUT)
-        
-        saved = old_cost - real_cost_new
-        if saved < 0: saved = 0 
-    except Exception as e:
-        return {"error": f"فشل حساب التكلفة: {str(e)}"}
+        real_cost_new = (tokens_in * 0.075 / 1_000_000) + (tokens_out * 0.30 / 1_000_000)
+
+    tokens_in = response.usage.prompt_tokens
+    tokens_out = response.usage.completion_tokens
+    old_cost = (tokens_in * request.PRICE_OLD_IN) + (tokens_out * request.PRICE_OLD_OUT)
+    
+    saved = max(0, old_cost - real_cost_new)
 
     return {
         "route": route_type,
