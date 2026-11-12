@@ -18,6 +18,7 @@ logger = logging.getLogger("klyro")
 
 REQUEST_TIMEOUT = 60  # ثواني
 DEFAULT_SYSTEM_PROMPT = "أجب باختصار شديد وبدون مقدمات."
+HARD_SYSTEM_PROMPT = "أجب بشكل كامل ودقيق. إذا طُلب كود فاكتبه كاملاً داخل كتلة كود، ولا تسأل أسئلة توضيحية إلا عند الضرورة القصوى."
 
 app = FastAPI()
 
@@ -32,6 +33,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     api_key: str
+    history: list = None   # اختياري: [{"role": "user"|"assistant", "content": "..."}]
 
 class ConnectRequest(BaseModel):
     api_key: str
@@ -246,6 +248,10 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
 
         model_chosen = strong_model if route_type == "HARD" else economy_model
 
+    # الاختصار الشديد يُطبَّق على الأسئلة السهلة فقط
+    if route_type == "HARD" and system_prompt == DEFAULT_SYSTEM_PROMPT:
+        system_prompt = HARD_SYSTEM_PROMPT
+
     # بناء الرسائل: كامل السياق إن وُجد
     if history:
         messages = [{"role": "system", "content": system_prompt}] + history
@@ -327,7 +333,12 @@ async def detect_models(request: ConnectRequest):
 
 @app.post("/route")
 async def route_chat(request: ChatRequest):
-    return await process_routing_logic(request.prompt, request.api_key.strip())
+    history = []
+    for m in (request.history or [])[-10:]:
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
+            history.append({"role": m["role"], "content": _content_to_text(m.get("content", ""))})
+    history.append({"role": "user", "content": request.prompt})
+    return await process_routing_logic(request.prompt, request.api_key.strip(), history=history)
 
 @app.post("/v1/chat/completions")
 async def enterprise_chat_completions(request: Request):
