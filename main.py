@@ -2,11 +2,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from functools import lru_cache
 import os
 import re
 import time
+import asyncio
+import hashlib
 import logging
+import httpx
 import uvicorn
 import litellm
 from litellm import acompletion, cost_per_token
@@ -43,40 +45,123 @@ def detect_provider(api_key: str):
     elif api_key.startswith("sk-"): return "openai"  # يشمل sk-proj-
     return "groq" # الافتراضي
 
-# --- 2. الاكتشاف الديناميكي للموديلات (مع كاش) ---
+# --- 2. الاكتشاف الحقيقي للموديلات حسب مفتاح المستخدم ---
 _EXCLUDE = ("embedding", "whisper", "tts", "audio", "realtime", "image",
             "moderation", "guard", "search", "transcribe", "-pro", "preview",
-            "deprecated", "vision-preview", "instruct-", "davinci", "babbage")
+            "deprecated", "instruct-", "davinci", "babbage", "orpheus", "playai")
 
-@lru_cache(maxsize=16)
-def get_dynamic_models(provider: str):
-    provider_models = []
+MODELS_TTL = 3600          # ساعة
+PRICES_TTL = 86400         # يوم
+_models_cache = {}         # sha256(key) -> (timestamp, strong, economy)
+PRICE_OVERRIDE = {}        # model -> (input_per_token, output_per_token) من API المزود مباشرة
+_last_price_refresh = 0.0
 
-    for model_name, info in litellm.model_cost.items():
-        if info.get("litellm_provider") != provider or info.get("mode") != "chat":
+class InvalidKey(Exception):
+    pass
+
+async def refresh_prices_if_needed():
+    """تحديث جدول أسعار litellm من المصدر مرة باليوم."""
+    global _last_price_refresh
+    if time.time() - _last_price_refresh < PRICES_TTL:
+        return
+    _last_price_refresh = time.time()
+    try:
+        getter = getattr(litellm, "get_model_cost_map", None)
+        if getter:
+            fresh = await asyncio.to_thread(getter, url=litellm.model_cost_map_url)
+            if fresh:
+                litellm.model_cost.update(fresh)
+                logger.info("price table refreshed (%d models)", len(fresh))
+    except Exception as e:
+        logger.warning("price refresh failed: %s", type(e).__name__)
+
+async def fetch_accessible_models(provider: str, api_key: str):
+    """يجلب الموديلات المتاحة فعلياً لمفتاح المستخدم من API المزود."""
+    urls = {
+        "groq": "https://api.groq.com/openai/v1/models",
+        "openai": "https://api.openai.com/v1/models",
+        "openrouter": "https://openrouter.ai/api/v1/models",
+        "anthropic": "https://api.anthropic.com/v1/models?limit=1000",
+    }
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"} if provider == "anthropic" \
+        else {"Authorization": f"Bearer {api_key}"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(urls[provider], headers=headers)
+    if r.status_code in (401, 403):
+        raise InvalidKey()
+    r.raise_for_status()
+    return r.json().get("data", [])
+
+def _usable(name: str) -> bool:
+    lname = name.lower()
+    return not any(x in lname for x in _EXCLUDE)
+
+def build_candidates(provider: str, items: list):
+    """يرجع قائمة [(name, total_price)] لموديلات الدردشة المتاحة والمسعّرة فعلياً."""
+    out = []
+    for it in items:
+        mid = it.get("id") if isinstance(it, dict) else None
+        if not mid or not _usable(mid):
             continue
-        lname = model_name.lower()
-        if any(x in lname for x in _EXCLUDE):
+
+        if provider == "openrouter":
+            pr = it.get("pricing") or {}
+            try:
+                p_in, p_out = float(pr.get("prompt", 0)), float(pr.get("completion", 0))
+            except (TypeError, ValueError):
+                continue
+            if p_in + p_out <= 0:
+                continue
+            name = f"openrouter/{mid}"
+            PRICE_OVERRIDE[name] = (p_in, p_out)   # السعر الحقيقي من المزود
+            out.append((name, p_in + p_out))
             continue
-        if info.get("deprecation_date"):
+
+        name = f"groq/{mid}" if provider == "groq" else mid
+        info = litellm.model_cost.get(name)
+        if not info or info.get("mode") != "chat" or info.get("deprecation_date"):
             continue
+        total = (info.get("input_cost_per_token") or 0) + (info.get("output_cost_per_token") or 0)
+        if total > 0:
+            out.append((name, total))
+    return out
 
-        in_cost = info.get("input_cost_per_token") or 0
-        out_cost = info.get("output_cost_per_token") or 0
-        total_cost = in_cost + out_cost
+async def get_dynamic_models(provider: str, api_key: str):
+    """(strong, economy) حسب الموديلات المتاحة فعلاً لمفتاح المستخدم وأسعارها الحقيقية."""
+    await refresh_prices_if_needed()
+    key_id = hashlib.sha256(api_key.encode()).hexdigest()
+    cached = _models_cache.get(key_id)
+    if cached and time.time() - cached[0] < MODELS_TTL:
+        return cached[1], cached[2]
 
-        if total_cost > 0:
-            provider_models.append({"name": model_name, "cost": total_cost})
+    candidates = []
+    try:
+        items = await fetch_accessible_models(provider, api_key)
+        candidates = build_candidates(provider, items)
+    except InvalidKey:
+        raise
+    except Exception as e:
+        logger.warning("model listing failed (%s): %s", provider, type(e).__name__)
 
-    # قيم افتراضية آمنة
-    if not provider_models:
-        return "groq/llama-3.3-70b-versatile", "groq/llama-3.1-8b-instant"
+    if not candidates:
+        # بديل: جدول litellm الثابت لهذا المزود
+        for name, info in litellm.model_cost.items():
+            if info.get("litellm_provider") != provider or info.get("mode") != "chat":
+                continue
+            if not _usable(name) or info.get("deprecation_date"):
+                continue
+            total = (info.get("input_cost_per_token") or 0) + (info.get("output_cost_per_token") or 0)
+            if total > 0:
+                candidates.append((name, total))
 
-    provider_models.sort(key=lambda x: x["cost"])
+    if not candidates:
+        if provider == "groq":
+            return "groq/llama-3.3-70b-versatile", "groq/llama-3.1-8b-instant"
+        raise RuntimeError("no_models")
 
-    economy_model = provider_models[0]["name"]
-    strong_model = provider_models[-1]["name"]
-
+    candidates.sort(key=lambda x: x[1])
+    economy_model, strong_model = candidates[0][0], candidates[-1][0]
+    _models_cache[key_id] = (time.time(), strong_model, economy_model)
     return strong_model, economy_model
 
 # --- 3. الموزع الذكي (Heuristics) ---
@@ -105,13 +190,18 @@ def smart_heuristic_router(prompt: str) -> str:
         return "HARD"
     return "UNKNOWN"
 
-# --- 4. دالة حساب التكلفة الحية ---
-def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
+# --- 4. دالة حساب التكلفة الحية (None = السعر غير معروف) ---
+def get_live_cost(model_name: str, prompt_tokens: int, completion_tokens: int):
+    if model_name in PRICE_OVERRIDE:
+        p_in, p_out = PRICE_OVERRIDE[model_name]
+        return p_in * prompt_tokens + p_out * completion_tokens
     try:
         p_cost, c_cost = cost_per_token(model=model_name, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
-        if p_cost + c_cost > 0: return p_cost + c_cost
-    except Exception: pass
-    return 0.0
+        if p_cost + c_cost > 0:
+            return p_cost + c_cost
+    except Exception:
+        pass
+    return None
 
 def _content_to_text(content) -> str:
     if isinstance(content, list):
@@ -122,8 +212,14 @@ def _content_to_text(content) -> str:
 async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = DEFAULT_SYSTEM_PROMPT,
                                 history: list = None, extra: dict = None):
     provider = detect_provider(api_key)
-    strong_model, economy_model = get_dynamic_models(provider)
+    try:
+        strong_model, economy_model = await get_dynamic_models(provider, api_key)
+    except InvalidKey:
+        return {"status": "error", "error": "مفتاح API غير صالح أو منتهي."}
+    except RuntimeError:
+        return {"status": "error", "error": "لا توجد موديلات متاحة لهذا المفتاح."}
 
+    router_cost = 0.0
     heuristic = smart_heuristic_router(prompt)
 
     if heuristic == "EASY":
@@ -138,6 +234,9 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
                 messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": prompt}],
                 temperature=0, max_tokens=5, api_key=api_key, drop_params=True, timeout=20
             )
+            u = route_decision.usage
+            rc = get_live_cost(economy_model, u.prompt_tokens, u.completion_tokens)
+            router_cost = rc or 0.0
             route_type = (route_decision.choices[0].message.content or "").strip().upper()
             if "HARD" not in route_type: route_type = "EASY"
             else: route_type = "HARD"
@@ -168,12 +267,18 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
         logger.error("completion failed (%s): %s", model_chosen, type(e).__name__)
         return {"status": "error", "error": f"فشل الطلب إلى المزود ({type(e).__name__}). تحقق من المفتاح أو الموديل."}
 
+    # مقارنة حقيقية: نفس التوكنز لو استُخدم أقوى موديل متاح لمفتاح المستخدم
     cost_strong = get_live_cost(strong_model, tokens_in, tokens_out)
     cost_actual = get_live_cost(model_chosen, tokens_in, tokens_out)
+    pricing_known = cost_strong is not None and cost_actual is not None
 
-    # التوفير فقط إذا اختير موديل مختلف عن القوي
-    routing_saved = max(0, cost_strong - cost_actual) if model_chosen != strong_model else 0.0
-    cost_gpt4o = get_live_cost("gpt-4o", tokens_in, tokens_out)
+    if pricing_known:
+        new_total = cost_actual + router_cost          # التكلفة الفعلية + تكلفة المصنِّف
+        routing_saved = cost_strong - new_total        # قيمة حقيقية (قد تكون سالبة)
+    else:
+        new_total = (cost_actual or 0.0) + router_cost
+        routing_saved = 0.0                            # لا نحسب توفيراً بسعر مجهول
+    cost_strong = cost_strong or 0.0
 
     return {
         "status": "success",
@@ -186,10 +291,14 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
         "cost_strong_provider": cost_strong,
-        "new_cost": cost_actual,
+        "new_cost": new_total,
+        "router_cost": router_cost,
         "routing_saved": routing_saved,
-        "cost_gpt4o": cost_gpt4o,
-        "total_saved": max(0, cost_gpt4o - cost_actual)
+        "baseline_model": strong_model,
+        "pricing_known": pricing_known,
+        # الاسم القديم محفوظ للتوافق مع الواجهة: صار يمثل تكلفة أقوى موديل لمزود المستخدم
+        "cost_gpt4o": cost_strong,
+        "total_saved": routing_saved
     }
 
 # --- 6. Endpoints ---
@@ -200,11 +309,11 @@ async def detect_models(request: ConnectRequest):
 
     api_key = request.api_key.strip()
     provider = detect_provider(api_key)
-    strong_model, economy_model = get_dynamic_models(provider)
-
     try:
-        await acompletion(model=economy_model, messages=[{"role": "user", "content": "hi"}],
-                          api_key=api_key, max_tokens=1, drop_params=True, timeout=20)
+        # التحقق يتم بقراءة قائمة الموديلات (بدون استهلاك رصيد)
+        strong_model, economy_model = await get_dynamic_models(provider, api_key)
+    except InvalidKey:
+        return {"error": "مفتاح API غير صالح أو منتهي.", "status": "error"}
     except Exception as e:
         logger.warning("detect_models failed: %s", type(e).__name__)
         return {"error": f"فشل الاتصال ({type(e).__name__}). تحقق من المفتاح.", "status": "error"}
