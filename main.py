@@ -85,6 +85,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     api_key: str
+    no_cache: Optional[bool] = False  # للاختبارات: تعطيل الكاش
     history: Optional[list] = None   # اختياري: [{"role": "user"|"assistant", "content": "..."}]
 
 class ConnectRequest(BaseModel):
@@ -268,7 +269,7 @@ def _content_to_text(content) -> str:
 
 # --- 5. دالة المعالجة المشتركة ---
 async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-                                history: list = None, extra: dict = None):
+                                history: list = None, extra: dict = None, use_cache: bool = True):
     provider = detect_provider(api_key)
     try:
         strong_model, economy_model = await get_dynamic_models(provider, api_key)
@@ -288,7 +289,7 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
         base_messages = [{"role": "user", "content": prompt}]
 
     # 2) كاش: نفس السؤال بنفس السياق = بدون أي استدعاء للمزود (تكلفة صفر)
-    cacheable = (extra or {}).get("temperature") in (None, 0, 0.0)
+    cacheable = use_cache and (extra or {}).get("temperature") in (None, 0, 0.0)
     ckey = cache_key(api_key, system_prompt, base_messages, extra) if cacheable else None
     if ckey:
         hit = cache_get(ckey)
@@ -437,7 +438,8 @@ async def route_chat(request: ChatRequest):
         if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
             history.append({"role": m["role"], "content": _content_to_text(m.get("content", ""))})
     history.append({"role": "user", "content": request.prompt})
-    return await process_routing_logic(request.prompt, request.api_key.strip(), history=history)
+    return await process_routing_logic(request.prompt, request.api_key.strip(), history=history,
+                                       use_cache=not request.no_cache)
 
 @app.post("/v1/chat/completions")
 async def enterprise_chat_completions(request: Request):
