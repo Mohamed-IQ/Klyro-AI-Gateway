@@ -7,6 +7,9 @@ import re
 import time
 import asyncio
 import hashlib
+import json
+from collections import OrderedDict
+from typing import Optional
 import logging
 import httpx
 import uvicorn
@@ -19,6 +22,55 @@ logger = logging.getLogger("klyro")
 REQUEST_TIMEOUT = 60  # ثواني
 DEFAULT_SYSTEM_PROMPT = "أجب باختصار شديد وبدون مقدمات."
 HARD_SYSTEM_PROMPT = "أجب بشكل كامل ودقيق. إذا طُلب كود فاكتبه كاملاً داخل كتلة كود، ولا تسأل أسئلة توضيحية إلا عند الضرورة القصوى."
+
+# --- إعدادات تقليل التوكنز ---
+CACHE_MAX = 1000               # أقصى عدد ردود محفوظة
+CACHE_TTL = 3600               # صلاحية الرد المحفوظ (ثانية)
+HISTORY_MAX_MESSAGES = 10      # أقصى عدد رسائل سابقة تُرسل للموديل
+HISTORY_MAX_CHARS = 6000       # أقصى حجم للسياق المرسل (حروف)
+_response_cache = OrderedDict()  # key -> (timestamp, answer, tokens_in, tokens_out, model, route)
+
+def trim_history(history: list):
+    """يقص السياق: آخر N رسائل وبحد أقصى للحروف، مع الإبقاء دائماً على آخر رسالة."""
+    if not history:
+        return history, 0
+    original = len(history)
+    trimmed = history[-HISTORY_MAX_MESSAGES:]
+    while len(trimmed) > 1 and sum(len(m.get("content", "")) for m in trimmed) > HISTORY_MAX_CHARS:
+        trimmed = trimmed[1:]
+    # أول رسالة يجب أن تكون user
+    while len(trimmed) > 1 and trimmed[0].get("role") != "user":
+        trimmed = trimmed[1:]
+    return trimmed, original - len(trimmed)
+
+def routing_text(prompt: str, history: list) -> str:
+    """نص التوجيه: الرسالة الحالية، ومعها آخر سؤال سابق إذا كانت قصيرة (تتابع للسياق)."""
+    if history and len(prompt.strip()) < 40:
+        prev_users = [m.get("content", "") for m in history[:-1] if m.get("role") == "user"]
+        if prev_users:
+            return prev_users[-1][:500] + "\n" + prompt
+    return prompt
+
+def cache_key(api_key: str, system_prompt: str, messages: list, extra: dict) -> str:
+    """مفتاح الكاش معزول لكل مفتاح API (لا يُخزَّن المفتاح نفسه)."""
+    payload = json.dumps([system_prompt, messages, sorted((extra or {}).items())], ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256((hashlib.sha256(api_key.encode()).hexdigest() + payload).encode()).hexdigest()
+
+def cache_get(key: str):
+    item = _response_cache.get(key)
+    if not item:
+        return None
+    if time.time() - item[0] > CACHE_TTL:
+        _response_cache.pop(key, None)
+        return None
+    _response_cache.move_to_end(key)
+    return item
+
+def cache_set(key: str, value: tuple):
+    _response_cache[key] = (time.time(),) + value
+    _response_cache.move_to_end(key)
+    while len(_response_cache) > CACHE_MAX:
+        _response_cache.popitem(last=False)
 
 app = FastAPI()
 
@@ -33,7 +85,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     api_key: str
-    history: list = None   # اختياري: [{"role": "user"|"assistant", "content": "..."}]
+    history: Optional[list] = None   # اختياري: [{"role": "user"|"assistant", "content": "..."}]
 
 class ConnectRequest(BaseModel):
     api_key: str
@@ -168,7 +220,11 @@ async def get_dynamic_models(provider: str, api_key: str):
 
 # --- 3. الموزع الذكي (Heuristics) ---
 _GREETINGS = ["مرحبا", "اهلا", "أهلا", "السلام", "هاي", "hello", "hi", "hey", "شكرا", "شكراً"]
-_HARD_AR = ["كود", "برمجة", "دالة", "خطأ", "تحليل بيانات", "خطة عمل"]
+_HARD_AR_WORDS = ["كود", "اكواد", "أكواد", "برمجة", "برمجه", "دالة", "خطأ", "خطا", "تحليل بيانات", "خطة عمل"]
+# مطابقة بحدود الكلمة مع السوابق الشائعة (ال، بال، لل، وال...) لتفادي مثل "الركود" ≠ "كود"
+_HARD_AR_RE = re.compile(
+    r"(?<!\w)(?:[وف]?(?:لل|[بلك]?(?:ال)?))(?:" + "|".join(_HARD_AR_WORDS) + r")(?!\w)"
+)
 _HARD_EN_RE = re.compile(r"\b(code|function|error|bug|debug|data analysis|business plan|algorithm)\b", re.I)
 _CODE_RE = re.compile(r"(^|\s)(def |class |import |function |const |let |var |public |private )")
 _MATH_RE = re.compile(r"\d\s*[=+\-*/^%]\s*\d|[a-zA-Z]\s*=\s*[\w(]")
@@ -188,7 +244,7 @@ def smart_heuristic_router(prompt: str) -> str:
         return "HARD"
     if _MATH_RE.search(text):
         return "HARD"
-    if _HARD_EN_RE.search(text) or any(k in lower_text for k in _HARD_AR):
+    if _HARD_EN_RE.search(text) or _HARD_AR_RE.search(text):
         return "HARD"
     return "UNKNOWN"
 
@@ -222,7 +278,43 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
         return {"status": "error", "error": "لا توجد موديلات متاحة لهذا المفتاح."}
 
     router_cost = 0.0
+
+    # 1) تقليل التوكنز: قص السياق المرسل
+    history_dropped = 0
+    if history:
+        history, history_dropped = trim_history(history)
+        base_messages = list(history)
+    else:
+        base_messages = [{"role": "user", "content": prompt}]
+
+    # 2) كاش: نفس السؤال بنفس السياق = بدون أي استدعاء للمزود (تكلفة صفر)
+    cacheable = (extra or {}).get("temperature") in (None, 0, 0.0)
+    ckey = cache_key(api_key, system_prompt, base_messages, extra) if cacheable else None
+    if ckey:
+        hit = cache_get(ckey)
+        if hit:
+            _, c_answer, c_in, c_out, c_model, c_route = hit
+            c_strong = get_live_cost(strong_model, c_in, c_out)
+            known = c_strong is not None
+            return {
+                "status": "success", "provider": provider, "route": c_route,
+                "model_used": c_model, "strong_model_selected": strong_model,
+                "economy_model_selected": economy_model, "answer": c_answer,
+                "tokens_in": 0, "tokens_out": 0,
+                "cost_strong_provider": c_strong or 0.0,
+                "new_cost": 0.0, "router_cost": 0.0,
+                "routing_saved": (c_strong or 0.0) if known else 0.0,
+                "baseline_model": strong_model, "pricing_known": known,
+                "cache_hit": True, "history_dropped": history_dropped,
+                "cost_gpt4o": c_strong or 0.0,
+                "total_saved": (c_strong or 0.0) if known else 0.0
+            }
+
+    # 3) التوجيه (يراعي السياق للرسائل القصيرة)
+    r_text = routing_text(prompt, base_messages)
     heuristic = smart_heuristic_router(prompt)
+    if heuristic == "UNKNOWN" and r_text != prompt:
+        heuristic = smart_heuristic_router(r_text)
 
     if heuristic == "EASY":
         model_chosen, route_type = economy_model, "EASY"
@@ -233,15 +325,14 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
             prompt_router = "صنف السؤال إلى EASY أو HARD. (EASY للأسئلة العادية، HARD للأكواد والتحليل). اكتب كلمة واحدة فقط."
             route_decision = await acompletion(
                 model=economy_model,
-                messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": prompt}],
+                messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": r_text}],
                 temperature=0, max_tokens=5, api_key=api_key, drop_params=True, timeout=20
             )
             u = route_decision.usage
             rc = get_live_cost(economy_model, u.prompt_tokens, u.completion_tokens)
             router_cost = rc or 0.0
             route_type = (route_decision.choices[0].message.content or "").strip().upper()
-            if "HARD" not in route_type: route_type = "EASY"
-            else: route_type = "HARD"
+            route_type = "HARD" if "HARD" in route_type else "EASY"
         except Exception as e:
             logger.warning("router classification failed: %s", type(e).__name__)
             route_type = "EASY"
@@ -249,31 +340,37 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
         model_chosen = strong_model if route_type == "HARD" else economy_model
 
     # الاختصار الشديد يُطبَّق على الأسئلة السهلة فقط
+    eff_system = system_prompt
     if route_type == "HARD" and system_prompt == DEFAULT_SYSTEM_PROMPT:
-        system_prompt = HARD_SYSTEM_PROMPT
+        eff_system = HARD_SYSTEM_PROMPT
 
-    # بناء الرسائل: كامل السياق إن وُجد
-    if history:
-        messages = [{"role": "system", "content": system_prompt}] + history
-    else:
-        messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
+    messages = [{"role": "system", "content": eff_system}] + base_messages
 
-    try:
-        response = await acompletion(
-            model=model_chosen,
-            messages=messages,
-            api_key=api_key, drop_params=True, timeout=REQUEST_TIMEOUT,
-            num_retries=1,
-            **(extra or {})
-        )
-        answer = response.choices[0].message.content or ""
-        tokens_in = response.usage.prompt_tokens
-        tokens_out = response.usage.completion_tokens
-    except Exception as e:
-        logger.error("completion failed (%s): %s", model_chosen, type(e).__name__)
-        return {"status": "error", "error": f"فشل الطلب إلى المزود ({type(e).__name__}). تحقق من المفتاح أو الموديل."}
+    # 4) الاستدعاء مع تصعيد تلقائي للموديل القوي إذا فشل الاقتصادي
+    attempts = [model_chosen] if model_chosen == strong_model else [model_chosen, strong_model]
+    response = None
+    for m in attempts:
+        try:
+            response = await acompletion(
+                model=m, messages=messages,
+                api_key=api_key, drop_params=True, timeout=REQUEST_TIMEOUT,
+                num_retries=1, **(extra or {})
+            )
+            model_chosen = m
+            break
+        except Exception as e:
+            logger.error("completion failed (%s): %s", m, type(e).__name__)
+    if response is None:
+        return {"status": "error", "error": "فشل الطلب إلى المزود. تحقق من المفتاح أو الموديل."}
 
-    # مقارنة حقيقية: نفس التوكنز لو استُخدم أقوى موديل متاح لمفتاح المستخدم
+    answer = response.choices[0].message.content or ""
+    tokens_in = response.usage.prompt_tokens
+    tokens_out = response.usage.completion_tokens
+
+    if ckey and answer:
+        cache_set(ckey, (answer, tokens_in, tokens_out, model_chosen, route_type))
+
+    # مقارنة: نفس التوكنز لو استُخدم أقوى موديل متاح لمفتاح المستخدم
     cost_strong = get_live_cost(strong_model, tokens_in, tokens_out)
     cost_actual = get_live_cost(model_chosen, tokens_in, tokens_out)
     pricing_known = cost_strong is not None and cost_actual is not None
@@ -302,7 +399,9 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
         "routing_saved": routing_saved,
         "baseline_model": strong_model,
         "pricing_known": pricing_known,
-        # الاسم القديم محفوظ للتوافق مع الواجهة: صار يمثل تكلفة أقوى موديل لمزود المستخدم
+        "cache_hit": False,
+        "history_dropped": history_dropped,
+        # الاسم القديم محفوظ للتوافق مع الواجهة: يمثل تكلفة أقوى موديل لمزود المستخدم
         "cost_gpt4o": cost_strong,
         "total_saved": routing_saved
     }
