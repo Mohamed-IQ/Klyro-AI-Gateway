@@ -90,7 +90,7 @@
     <!-- Hero Section -->
     <header class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-8 text-center">
         <h2 class="text-3xl md:text-5xl font-extrabold mb-4 leading-tight" data-i18n="hero_title">
-            قلل فاتورة الذكاء الاصطناعي بنسبة <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">97%</span>
+            قلل فاتورة الذكاء الاصطناعي بنسبة <span id="hero-percent" class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">—</span>
         </h2>
         <p class="text-lg text-slate-400 max-w-3xl mx-auto" data-i18n="hero_subtitle">
             بوابة توجيه ذكية تكتشف مزودك تلقائياً، وتوزع المهام بين النماذج القوية والاقتصادية، لتوفر أموالك دون التضحية بجودة الإجابات.
@@ -159,7 +159,7 @@
                     <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl"></div>
                     <h3 class="text-slate-300 font-semibold mb-1" data-i18n="stat_routing">إجمالي وفر التوجيه الذكي</h3>
                     <p class="text-4xl font-extrabold text-emerald-400 glow-text mt-2" id="stat-routing-saved">$0.000000</p>
-                    <p class="text-xs text-slate-500 mt-2" data-i18n="stat_routing_desc">التراكمي للفرق بين النموذج القوي والاقتصادي.</p>
+                    <p class="text-xs text-slate-500 mt-2" data-i18n="stat_routing_desc">توفير تقديري مقارنةً بأقوى موديل عند مزودك.</p>
                 </div>
 
                 <!-- Cost Comparison -->
@@ -172,7 +172,7 @@
                     <div class="space-y-4">
                         <div>
                             <div class="flex justify-between text-sm mb-1">
-                                <span class="text-slate-400" data-i18n="stat_old">إجمالي التكلفة القديمة (GPT-4o)</span>
+                                <span class="text-slate-400" data-i18n="stat_old">تكلفة أقوى موديل عند مزودك</span>
                                 <span class="text-red-400 font-mono" id="stat-old-cost">$0.000000</span>
                             </div>
                             <div class="w-full bg-slate-700 rounded-full h-2"><div class="bg-red-500 h-2 rounded-full" style="width: 100%"></div></div>
@@ -235,7 +235,7 @@
         const translations = {
             ar: {
                 nav_subtitle: "توجيه ذكي وتوفير للتكاليف",
-                hero_title: 'قلل فاتورة الذكاء الاصطناعي بنسبة <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">97%</span>',
+                hero_title: 'قلل فاتورة الذكاء الاصطناعي بنسبة <span id="hero-percent" class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">—</span>',
                 hero_subtitle: "بوابة توجيه ذكية تكتشف مزودك تلقائياً، وتوزع المهام بين النماذج القوية والاقتصادية، لتوفر أموالك دون التضحية بجودة الإجابات.",
                 byok_title: "مفتاح API (BYOK)",
                 byok_desc: "أدخل مفتاحك (Groq, OpenAI, Anthropic). نحن لا نخزنه، بل نستخدمه للاتصال الفوري.",
@@ -249,9 +249,9 @@
                 model_strong: "النموذج القوي (للمهام المعقدة)",
                 model_economy: "النموذج الاقتصادي (للمهام البسيطة)",
                 stat_routing: "إجمالي وفر التوجيه الذكي",
-                stat_routing_desc: "التراكمي للفرق بين النموذج القوي والاقتصادي.",
+                stat_routing_desc: "توفير تقديري مقارنةً بأقوى موديل عند مزودك.",
                 cost_comparison: "إجمالي التكلفة المتراكمة",
-                stat_old: "إجمالي التكلفة القديمة (GPT-4o)",
+                stat_old: "تكلفة أقوى موديل عند مزودك",
                 stat_new: "إجمالي تكلفة Klyro",
                 chat_title: "محاكي التكلفة الحي",
                 not_connected: "غير متصل",
@@ -264,7 +264,7 @@
             },
             en: {
                 nav_subtitle: "Smart Routing & Cost Optimization",
-                hero_title: 'Cut AI Costs by <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">97%</span>',
+                hero_title: 'Cut AI Costs by <span id="hero-percent" class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 glow-text">—</span>',
                 hero_subtitle: "A smart routing gateway that auto-detects your provider, distributes tasks between strong and economy models, saving you money without compromising quality.",
                 byok_title: "API Key (BYOK)",
                 byok_desc: "Enter your key (Groq, OpenAI, Anthropic). We don't store it, we use it for instant connection.",
@@ -278,9 +278,9 @@
                 model_strong: "Strong Model (Complex Tasks)",
                 model_economy: "Economy Model (Simple Tasks)",
                 stat_routing: "Total Smart Routing Savings",
-                stat_routing_desc: "Cumulative difference between Strong and Economy model costs.",
+                stat_routing_desc: "Estimated savings vs your provider's strongest model.",
                 cost_comparison: "Total Accumulated Cost",
-                stat_old: "Total Old Cost (GPT-4o)",
+                stat_old: "Cost with your provider's strongest model",
                 stat_new: "Total Klyro Cost",
                 chat_title: "Live Cost Simulator",
                 not_connected: "Not Connected",
@@ -295,13 +295,21 @@
 
         let currentLang = 'ar';
         let isConnected = false;
+        let chatHistory = [];   // ذاكرة المحادثة المرسلة للسيرفر
         const BACKEND_URL = "https://klyro-ai-gateway.de1.netrun.io"; // تأكد من تحديث هذا الرابط
 
         // --- إدارة الحالة المتراكمة (State Management) ---
+        function readNum(key) {
+            try { return parseFloat(localStorage.getItem(key)) || 0.0; } catch (e) { return 0.0; }
+        }
+        function saveNum(key, val) {
+            try { localStorage.setItem(key, val); } catch (e) {}
+        }
+
         let stats = {
-            old_cost: parseFloat(localStorage.getItem('klyro_old_cost')) || 0.0,
-            new_cost: parseFloat(localStorage.getItem('klyro_new_cost')) || 0.0,
-            routing_saved: parseFloat(localStorage.getItem('klyro_routing_saved')) || 0.0
+            old_cost: readNum('klyro_old_cost'),
+            new_cost: readNum('klyro_new_cost'),
+            routing_saved: readNum('klyro_routing_saved')
         };
 
         function updateStatsUI() {
@@ -312,9 +320,20 @@
             // تحديث شريط التقدم
             let percent = 0;
             if (stats.old_cost > 0) {
-                percent = Math.max(1, (stats.new_cost / stats.old_cost) * 100);
+                percent = Math.min(100, Math.max(1, (stats.new_cost / stats.old_cost) * 100));
             }
             document.getElementById('cost-bar').style.width = `${percent}%`;
+
+            // نسبة التوفير الفعلية (تُحسب من الأرقام، وليست رقماً ثابتاً)
+            const heroPercent = document.getElementById('hero-percent');
+            if (heroPercent) {
+                if (stats.old_cost > 0) {
+                    const saved = Math.max(0, (1 - stats.new_cost / stats.old_cost) * 100);
+                    heroPercent.innerText = `${saved.toFixed(0)}%`;
+                } else {
+                    heroPercent.innerText = '—';
+                }
+            }
         }
         
         // تحميل الإحصائيات عند فتح الصفحة
@@ -324,9 +343,11 @@
         document.getElementById('reset-btn').addEventListener('click', () => {
             if(confirm(currentLang === 'ar' ? 'هل أنت متأكد من مسح جميع الإحصائيات؟' : 'Are you sure you want to clear all stats?')) {
                 stats = { old_cost: 0.0, new_cost: 0.0, routing_saved: 0.0 };
-                localStorage.removeItem('klyro_old_cost');
-                localStorage.removeItem('klyro_new_cost');
-                localStorage.removeItem('klyro_routing_saved');
+                try {
+                    localStorage.removeItem('klyro_old_cost');
+                    localStorage.removeItem('klyro_new_cost');
+                    localStorage.removeItem('klyro_routing_saved');
+                } catch (e) {}
                 updateStatsUI();
             }
         });
@@ -366,6 +387,9 @@
                 if (routeBadge.classList.contains('text-red-400')) routeBadge.innerText = translations[currentLang].route_hard;
                 if (routeBadge.classList.contains('text-emerald-400')) routeBadge.innerText = translations[currentLang].route_easy;
             }
+
+            // إعادة رسم النسبة بعد تغيير اللغة
+            updateStatsUI();
         }
 
         document.getElementById('lang-toggle').addEventListener('click', toggleLanguage);
@@ -394,6 +418,7 @@
 
                 if (data.status === 'success') {
                     isConnected = true;
+                    chatHistory = [];   // محادثة جديدة عند كل تفعيل
                     connectStatus.className = 'mt-4 text-sm font-medium block text-center text-emerald-400';
                     connectStatus.innerText = translations[currentLang].connect_success;
                     
@@ -424,15 +449,21 @@
             }
         });
 
+        // عرض آمن للرسائل (textContent بدل innerHTML لمنع XSS وللحفاظ على أسطر الكود)
         function addMessage(text, sender) {
             const div = document.createElement('div');
+            const bubble = document.createElement('div');
+            bubble.textContent = text;
+            bubble.style.whiteSpace = 'pre-wrap';
+            bubble.style.wordBreak = 'break-word';
             if (sender === 'user') {
                 div.className = 'flex justify-end';
-                div.innerHTML = `<div class="bg-slate-700 text-white rounded-2xl rounded-tr-sm py-3 px-5 max-w-[85%] shadow-sm">${text}</div>`;
+                bubble.className = 'bg-slate-700 text-white rounded-2xl rounded-tr-sm py-3 px-5 max-w-[85%] shadow-sm';
             } else {
                 div.className = 'flex justify-start';
-                div.innerHTML = `<div class="bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl rounded-tl-sm py-3 px-5 max-w-[85%] shadow-sm">${text}</div>`;
+                bubble.className = 'bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl rounded-tl-sm py-3 px-5 max-w-[85%] shadow-sm';
             }
+            div.appendChild(bubble);
             chatBox.appendChild(div);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
@@ -452,26 +483,30 @@
                 const response = await fetch(`${BACKEND_URL}/route`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt, api_key: apiKey })
+                    body: JSON.stringify({ prompt: prompt, api_key: apiKey, history: chatHistory })
                 });
 
                 const data = await response.json();
 
                 if (data.status === 'success') {
                     addMessage(data.answer, 'bot');
+
+                    // حفظ المحادثة للسياق
+                    chatHistory.push({ role: 'user', content: prompt }, { role: 'assistant', content: data.answer });
+                    if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
                     
-                    // --- التحديث التراكمي (Accumulation) ---
-                    stats.old_cost += data.cost_gpt4o;
-                    stats.new_cost += data.new_cost;
-                    stats.routing_saved += data.routing_saved;
-                    
-                    // حفظ في المتصفح
-                    localStorage.setItem('klyro_old_cost', stats.old_cost);
-                    localStorage.setItem('klyro_new_cost', stats.new_cost);
-                    localStorage.setItem('klyro_routing_saved', stats.routing_saved);
-                    
-                    // تحديث الواجهة
-                    updateStatsUI();
+                    // --- التحديث التراكمي (فقط إذا كانت الأسعار معروفة) ---
+                    if (data.pricing_known !== false) {
+                        stats.old_cost += data.cost_gpt4o || 0;
+                        stats.new_cost += data.new_cost || 0;
+                        stats.routing_saved += data.routing_saved || 0;
+
+                        saveNum('klyro_old_cost', stats.old_cost);
+                        saveNum('klyro_new_cost', stats.new_cost);
+                        saveNum('klyro_routing_saved', stats.routing_saved);
+
+                        updateStatsUI();
+                    }
 
                     routeBadge.classList.remove('hidden', 'text-red-400', 'border-red-500', 'bg-red-500/10', 'text-emerald-400', 'border-emerald-500', 'bg-emerald-500/10');
                     if (data.route === 'HARD') {
