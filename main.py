@@ -221,13 +221,25 @@ async def get_dynamic_models(provider: str, api_key: str):
 
 # --- 3. الموزع الذكي (Heuristics) ---
 _GREETINGS = ["مرحبا", "اهلا", "أهلا", "السلام", "هاي", "hello", "hi", "hey", "شكرا", "شكراً"]
-_HARD_AR_WORDS = ["كود", "اكواد", "أكواد", "برمجة", "برمجه", "دالة", "خطأ", "خطا", "تحليل بيانات", "خطة عمل"]
-# مطابقة بحدود الكلمة مع السوابق الشائعة (ال، بال، لل، وال...) لتفادي مثل "الركود" ≠ "كود"
+
+# ✨ تم إضافة كلمات مفتاحية جديدة لاصطياد الأسئلة الصعبة
+_HARD_AR_WORDS = [
+    "كود", "اكواد", "أكواد", "برمجة", "برمجه", "دالة", "خطأ", "خطا", "تحليل بيانات", "خطة عمل",
+    "قاعدة بيانات", "استعلام", "جدول", "حلل", "تحليل", "قارن", "مقارنة", "صمم", "تصميم", "ناقش", 
+    "معمارية", "أداء", "تحسين", "بايثون", "جافا", "جافاسكريبت", "خوارزمية", "نظام", "تطبيق", 
+    "مشروع", "قطار", "رياضيات", "احسب", "اشرح"
+]
+
 _HARD_AR_RE = re.compile(
     r"(?<!\w)(?:[وف]?(?:لل|[بلك]?(?:ال)?))(?:" + "|".join(_HARD_AR_WORDS) + r")(?!\w)"
 )
-_HARD_EN_RE = re.compile(r"\b(code|function|error|bug|debug|data analysis|business plan|algorithm)\b", re.I)
-_CODE_RE = re.compile(r"(^|\s)(def |class |import |function |const |let |var |public |private )")
+
+# ✨ تم إضافة كلمات إنجليزية جديدة (SQL, Database, Analyze, إلخ)
+_HARD_EN_RE = re.compile(r"\b(code|function|error|bug|debug|data analysis|business plan|algorithm|sql|database|query|analyze|compare|design|architecture|optimize|python|javascript|java|train|math)\b", re.I)
+
+# ✨ تم إضافة كلمات SQL لاكتشاف الأكواد المكتوبة مباشرة
+_CODE_RE = re.compile(r"(^|\s)(def |class |import |function |const |let |var |public |private |select |from |where |join )", re.I)
+
 _MATH_RE = re.compile(r"\d\s*[=+\-*/^%]\s*\d|[a-zA-Z]\s*=\s*[\w(]")
 
 def smart_heuristic_router(prompt: str) -> str:
@@ -323,7 +335,13 @@ async def process_routing_logic(prompt: str, api_key: str, system_prompt: str = 
         model_chosen, route_type = strong_model, "HARD"
     else:
         try:
-            prompt_router = "صنف السؤال إلى EASY أو HARD. (EASY للأسئلة العادية، HARD للأكواد والتحليل). اكتب كلمة واحدة فقط."
+            # ✨ تم تعديل تعليمات المصنف لتكون أكثر صرامة
+            prompt_router = (
+                "أنت خبير في تصنيف الأسئلة. صنف السؤال إلى EASY أو HARD.\n"
+                "- EASY: تحيات، أسئلة عامة بسيطة، معلومات بديهية، ترجمة كلمات قصيرة.\n"
+                "- HARD: برمجة، أكواد، SQL، تحليل، مقارنة، تصميم أنظمة، رياضيات معقدة، خطط عمل، أو أي سؤال يتطلب خطوات تفكير متعددة أو إجابة طويلة.\n"
+                "اكتب كلمة واحدة فقط: EASY أو HARD."
+            )
             route_decision = await acompletion(
                 model=economy_model,
                 messages=[{"role": "system", "content": prompt_router}, {"role": "user", "content": r_text}],
